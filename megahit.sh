@@ -1,21 +1,21 @@
 #!/bin/sh
-#SBATCH -A p32045
-#SBATCH -p short
+#SBATCH -A b1042
+#SBATCH -p genomics
 #SBATCH -N 1
-#SBATCH -n 16
-#SBATCH -t 4:00:00
+#SBATCH -n 24
+#SBATCH -t 48:00:00
 #SBATCH --mem=0
-#SBATCH --job-name="fastp"
+#SBATCH --job-name="megahit"
 #SBATCH --mail-user=anahid.moghadam@northwestern.edu
 #SBATCH --mail-type=FAIL
-#SBATCH --output=/projects/b1042/HartmannLab/Howler/fastp.out
-#SBATCH --error=/projects/b1042/HartmannLab/Howler/fastp.err
+#SBATCH --output=/projects/b1042/HartmannLab/Howler/megahit.out
+#SBATCH --error=/projects/b1042/HartmannLab/Howler/megahit.err
 
 
 module purge all
-module load fastp/0.23.4
+module load megahit/1.0.6.1
 
-cd /projects/b1042/HartmannLab/Howler/kneaddata
+cd /projects/b1042/HartmannLab/Howler/fastp-out
 
 export list=(KM-10 KM-100 KM-101 KM-109 KM-110 KM-111 KM-112 KM-113 KM-115 KM-116 KM-12 KM-123 KM-124 KM-125 KM-126 KM-127 \
  KM-128 KM-129 KM-136 KM-137 KM-138 KM-139 KM-140 KM-141 KM-142 KM-149 KM-150 KM-151 KM-152 KM-153 KM-154 KM-155 KM-162 KM-163 KM-164 \
@@ -23,11 +23,7 @@ export list=(KM-10 KM-100 KM-101 KM-109 KM-110 KM-111 KM-112 KM-113 KM-115 KM-11
  KM-206 KM-207 KM-208 KM-209 KM-21 KM-22 KM-24 KM-25 KM-26 KM-29 KM-36 KM-37 KM-39 KM-40 KM-41 KM-42 KM-50 KM-51 KM-53 KM-55 KM-56 KM-57 KM-6 KM-64 KM-65 \
  KM-68 KM-69 KM-7 KM-70 KM-71 KM-79 KM-8 KM-80 KM-81 KM-82 KM-84 KM-86 KM-87 KM-9 KM-94 KM-95 KM-96 KM-98 KM-99)
 
-for i in "${list[@]:98:10}"; do
+ for i in "${list[@]:92:10}"; do
     echo "$i"
-    cd /projects/b1042/HartmannLab/Howler/kneaddata/${i}
-    fastp --in1 ${i}_R1_kneaddata_paired_1.fastq -o ../../fastp-out/${i}_paired_1.fastq --in2 ${i}_R1_kneaddata_paired_2.fastq  -O ../../fastp-out/${i}_paired_2.fastq --detect_adapter_for_pe  --thread 16
-
+    megahit -1 ${i}_paired_1.fastq -2 ${i}_paired_2.fastq  -o ../megahit/${i}-assembled -m 0.9
 done
-
-
