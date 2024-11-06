@@ -8,7 +8,7 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
 ```{r}
-setwd("C://Users/Owner/Desktop/Howler2/Howler/R-mpa")
+setwd("C://Users/Owner/Desktop/Project-Howler/R-mpa")
 ```
 
 ```{r}
@@ -55,7 +55,8 @@ normalized_data <- normalized_data * 100
 
 # Create final dataframe with genus names
 final_genus <- data.frame(Genus=genus_names, normalized_data)
-
+colnames(final_genus) <- gsub("\\.", "-", colnames(final_genus))
+write.table(final_genus , "final_genus.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
 
 final_genus
 
@@ -75,21 +76,25 @@ normalized_data <- normalized_data * 100
 final_species <- data.frame(Species=species_names, normalized_data)
 
 
-final_species
+colnames(final_species) <- gsub("\\.", "-", colnames(final_species))
+write.table(final_species , "final_species.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
 
+final_species
 
 ```
 ```{r}
-setwd("C://Users/Owner/Desktop/Howler2/Howler/R-mpa")
 
 genus_data <- final_genus
 
-metadata <- read.csv("C://Users/Owner/Desktop/Howler2/Howler/R-mpa/howlermeta.csv")  # Replace with your actual file name
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
 genus_data
 metadata
 
 
 ```
+
+
+
 ```{r}
 
 ##clean and merge
@@ -97,17 +102,13 @@ metadata
 
 genus_long <- genus_data %>%
   pivot_longer(cols = -Genus, names_to = "SampleID", values_to = "Abundance")
-
-# Clean up SampleID to match metadata
-# Remove 'KM.' prefix and add 'KM-' prefix
-genus_long$SampleID <- paste0("KM-", sub("KM\\.", "", genus_long$SampleID))
+genus_long
 
 # Merge with metadata
 tidy_data <- merge(genus_long, metadata, by="SampleID")
 
 
-print(head(tidy_data))
-
+tidy_data
 
 
 ```
@@ -170,6 +171,8 @@ ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi 
 ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
 
 
+
+
 ```
 ```{r}
 ###top10
@@ -215,6 +218,31 @@ ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, heigh
 
 ```
 ```{r}
+# Read the data without headers, treating the first row as data
+genus_data_no_header <- read.table('final_genus.txt', header=FALSE, sep='\t', check.names=FALSE)
+
+# Convert to matrix and ensure numeric, handling NAs
+# We will skip the first row which was previously the header
+numeric_genus_matrix <- as.matrix(genus_data_no_header[-1, ])
+mode(numeric_genus_matrix) <- "numeric"
+
+# Check for NA values and remove rows with NAs
+na_rows <- apply(numeric_genus_matrix, 1, function(x) any(is.na(x)))
+clean_genus_matrix <- numeric_genus_matrix[!na_rows, ]
+
+# Transpose the matrix
+clean_genus_matrix_t <- t(clean_genus_matrix)
+
+# Calculate Bray-Curtis distance
+bray_curtis_dist_no_header <- vegdist(clean_genus_matrix_t, method="bray")
+
+# Verify the results
+print("Dimensions of transposed matrix without headers:")
+print(dim(clean_genus_matrix_t))
+
+print("\
+First few values of the distance matrix without headers:")
+print(head(as.vector(as.matrix(bray_curtis_dist_no_header))))
 
 
 
@@ -284,19 +312,72 @@ ggsave("PCoA of Gut Microbiome Composition by Individual.jpg", plot = p2, width 
 
 
 ```
+```{r}
+set.seed(123) # for reproducibility
+
+# Run PERMANOVA for each factor
+permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata, permutations = 999)
+permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata, permutations = 999)
+permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata, permutations = 999)
+
+# Print results
+print("PERMANOVA results for Season:")
+print(permanova_season)
+print("\
+PERMANOVA results for Sex:")
+print(permanova_sex)
+print("\
+PERMANOVA results for Individual:")
+print(permanova_individual)
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+    Factor = c("Season", "Individual", "Sex"),
+    R2 = c(0.03139 , 0.13165, 0.04976),
+    P_value = c(0.154, 0.005, 0.002)
+)
+
+# Create a bar plot using ggplot2
+library(ggplot2)
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P_value < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P_value)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+
+```
 
 ```{r}
 #PERMANOVA
 
 # Extract R-squared values for Season and Individual
-
+set.seed(123)
 season_r2 <- adonis2(bray_curtis_matrix ~ Season, data = metadata, permutations = 999)$R2[1]
 individual_r2 <- adonis2(bray_curtis_matrix ~ Individual, data = metadata,  permutations = 999)$R2[1]
+sex_r2 <- adonis2(bray_curtis_matrix ~ Sex, data = metadata,  permutations = 999)$R2[1]
+
+
+
 
 # Create a comparison data frame
 comparison_df <- data.frame(
-  Variable = c("Season", "Individual"),
-  R2 = c(season_r2, individual_r2)
+  Variable = c("Season", "Individual", "Sex"),
+  R2 = c(season_r2, individual_r2, sex_r2)
 )
 
 
@@ -306,7 +387,7 @@ p1 <-
   geom_bar(stat = "identity", width = 0.6) +
   theme_minimal() +
   labs(
-    title = "Comparison of Variance Explained: Individual vs Season",
+    title = "Comparison of Variance Explained",
     y = "R-squared (proportion of variance explained)",
     x = ""
   ) +
