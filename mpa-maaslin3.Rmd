@@ -34,18 +34,6 @@ metadata <- read.csv("howlermeta.csv", sep = ',')
 ### this one works
 
 
-# Factor the categorical variables to test IBD against healthy controls
-# write.table(taxa_table, file = "howlermeta.txt" , sep="\t")
-metadata$Individual <-
-  factor(metadata$Individual, levels = c("Dos" , "Hugo", "Isa", "Jupiler", "Melanie", "Maia", "Uno"))
-metadata$Sex <-
-  factor(metadata$Sex, levels = c("Male","Female"))
-metadata$Season <-
-  factor(metadata$Season, levels = c( "Dry", "Intermediate", "Rain" ))
-metadata$Age <- 
-  factor(metadata$Age)
-
-# Check how the dataframes look like
 
 
 taxa_table <- read.table("t_taxa.txt",
@@ -73,11 +61,11 @@ metadata$Age <-
 colnames(taxa_table) <- gsub("\\.", "_", colnames(taxa_table))
 
 
-row.names(taxa_table) = taxa_table$SampleID
-taxa_table$SampleID   <- NULL
-
-row.names(metadata) = metadata$SampleID
-metadata$SampleID   <- NULL
+# row.names(taxa_table) = taxa_table$SampleID
+# taxa_table$SampleID   <- NULL
+# 
+# row.names(metadata) = metadata$SampleID
+# metadata$SampleID   <- NULL
 
 metadata
 taxa_table                       
