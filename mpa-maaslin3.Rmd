@@ -5,10 +5,12 @@ output: html_notebook
 
 ```{r}
 library(maaslin3)
+
 ```
 
-```{r}
 
+```{r}
+####maybe?
 # Read abundance table
 final_genus <- read_tsv("final_genus.txt", col_names = TRUE)
 taxa_table <- t(final_genus)
@@ -25,8 +27,15 @@ colnames(taxa_table)[1] <- "SampleID"
 metadata <- read.csv("howlermeta.csv", sep = ',')
 # metadata
 
-metadata <- as.data.frame(metadata)
+```
+
+
+```{r}
+### this one works
+
+
 # Factor the categorical variables to test IBD against healthy controls
+# write.table(taxa_table, file = "howlermeta.txt" , sep="\t")
 metadata$Individual <-
   factor(metadata$Individual, levels = c("Dos" , "Hugo", "Isa", "Jupiler", "Melanie", "Maia", "Uno"))
 metadata$Sex <-
@@ -37,18 +46,73 @@ metadata$Age <-
   factor(metadata$Age)
 
 # Check how the dataframes look like
-taxa_table
+
+
+taxa_table <- read.table("t_taxa.txt",
+                           header           = TRUE,
+                           sep              = "\t", 
+                           stringsAsFactors = FALSE) 
+taxa_table$SampleID <- gsub("-", "_", taxa_table$SampleID)
+
+metadata <-  read.table("howlermeta.txt",
+                          header           = TRUE,
+                          sep              = "\t", 
+                          stringsAsFactors = FALSE)
+
+metadata$SampleID <- gsub("-", "_", metadata$SampleID)
+
+metadata$Individual <-
+  factor(metadata$Individual, levels = c("Dos" , "Hugo", "Isa", "Jupiler", "Melanie", "Maia", "Uno"))
+metadata$Sex <-
+  factor(metadata$Sex, levels = c("Male","Female"))
+metadata$Season <-
+  factor(metadata$Season, levels = c( "Dry", "Intermediate", "Rain" ))
+metadata$Age <- 
+  factor(metadata$Age)
+
+colnames(taxa_table) <- gsub("\\.", "_", colnames(taxa_table))
+
+
+row.names(taxa_table) = taxa_table$SampleID
+taxa_table$SampleID   <- NULL
+
+row.names(metadata) = metadata$SampleID
+metadata$SampleID   <- NULL
+
 metadata
+taxa_table                       
+```
+```{r}
+
+# colnames(taxa_table)
+
+# colnames(taxa_table)  <- c( "Spyradosoma",          "Onthovivens",     "Faecalibacterium",   "Alloprevotella",       
+#   "Onthomonas" ,           "Prevotella" ,           "Escherichia"  ,         "UBA11549"   ,          
+#   "CAJLXD01",              "CAG_492"   ,            "HGM12814"   ,           "Streptococcus"  ,      
+#  "Woodwardibium" ,        "UMGS621"   ,            "Elizabethkingia"  ,     "QALR01"   ,            
+#  "Bacteroides"  ,         "RGIG1955"      ,        "Cutibacterium"     ,    "Pectobacterium"  ,     
+#  "NSJ_63"      ,          "HGM13634"         ,     "Clostridium_P" ,        "Hydrogeniiclostridium",
+#  "Instestinimonas_A" ,    "UMGS1591"     ,         "UMGS1783"  ,            "Victivallis"   ,       
+#  "CAG_196"   ,            "Intestinimonas"   ,     "Dysosmobacter",         "HGM11417" ,            
+# "Oxalobacter"    ,       "Liquorilactobacillus",  "Enterococcus_B" ,       "HGM13222" ,            
+#  "Schneewindia" ,         "Rosenbergiella" ,       "Pseudomonas"  ,         "Akkermansia"  ,        
+#  "Brevundimonas"  ,       "Asticcacaulis"  ,       "Myxococcus"      ,      "TA_21"  ,              
+# "UMGS911"    ,           "Vogesella"  )
+# 
+# colnames(metadata) <- c ("Individual" ,"Age", "Sex", "Reproductive",  "Season", "Week", "Month" )
+
+
 
 ```
+
 
 ```{r}
 set.seed(1)
 fit_out <- maaslin3(input_data = taxa_table ,
                     input_metadata = metadata,
                     output = 'hmp2_output',
-                    formula = '~ Individual + Season +
-                        Sex ',
+                    formula = '~ Season + Sex ',
+                    fixed_effects = "Dry",
                     normalization = 'TSS',
                     transform = 'LOG',
                     augment = TRUE,
