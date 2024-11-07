@@ -1,0 +1,65 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(maaslin3)
+```
+
+```{r}
+
+# Read abundance table
+final_genus <- read_tsv("final_genus.txt", col_names = TRUE)
+taxa_table <- t(final_genus)
+taxa_table <- as.data.frame(taxa_table)
+# write.table(taxa_table, file = "t_taxa.txt" , sep="\t")
+taxa_table <- read_tsv("t_taxa.txt")
+taxa_table <- as.data.frame(taxa_table)
+colnames(taxa_table)[1] <- "SampleID"
+
+
+# taxa_table
+# Read metadata table
+
+metadata <- read.csv("howlermeta.csv", sep = ',')
+# metadata
+
+metadata <- as.data.frame(metadata)
+# Factor the categorical variables to test IBD against healthy controls
+metadata$Individual <-
+  factor(metadata$Individual, levels = c("Dos" , "Hugo", "Isa", "Jupiler", "Melanie", "Maia", "Uno"))
+metadata$Sex <-
+  factor(metadata$Sex, levels = c("Male","Female"))
+metadata$Season <-
+  factor(metadata$Season, levels = c( "Dry", "Intermediate", "Rain" ))
+metadata$Age <- 
+  factor(metadata$Age)
+
+# Check how the dataframes look like
+taxa_table
+metadata
+
+```
+
+```{r}
+set.seed(1)
+fit_out <- maaslin3(input_data = taxa_table ,
+                    input_metadata = metadata,
+                    output = 'hmp2_output',
+                    formula = '~ Individual + Season +
+                        Sex ',
+                    normalization = 'TSS',
+                    transform = 'LOG',
+                    augment = TRUE,
+                    standardize = TRUE,
+                    max_significance = 0.1,
+                    median_comparison_abundance = TRUE,
+                    median_comparison_prevalence = FALSE,
+                    max_pngs = 250,
+                    cores = 1)
+```
+
+
+
+
