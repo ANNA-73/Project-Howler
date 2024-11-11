@@ -5,11 +5,12 @@ output: html_notebook
 
 ```{r}
 library(maaslin3)
-
+library(readr)
 ```
 
 
 ```{r}
+#### dont mind this , go to next chunk
 ####maybe?
 # Read abundance table
 final_genus <- read_tsv("final_genus.txt", col_names = TRUE)
@@ -40,6 +41,7 @@ taxa_table <- read.table("t_taxa.txt",
                            header           = TRUE,
                            sep              = "\t", 
                            stringsAsFactors = FALSE) 
+
 taxa_table$SampleID <- gsub("-", "_", taxa_table$SampleID)
 
 metadata <-  read.table("howlermeta.txt",
@@ -61,17 +63,17 @@ metadata$Age <-
 colnames(taxa_table) <- gsub("\\.", "_", colnames(taxa_table))
 
 
-# row.names(taxa_table) = taxa_table$SampleID
-# taxa_table$SampleID   <- NULL
-# 
-# row.names(metadata) = metadata$SampleID
-# metadata$SampleID   <- NULL
+row.names(taxa_table) = taxa_table$SampleID
+taxa_table$SampleID   <- NULL
+
+row.names(metadata) = metadata$SampleID
+metadata$SampleID   <- NULL
 
 metadata
 taxa_table                       
 ```
 ```{r}
-
+###### dont mind this
 # colnames(taxa_table)
 
 # colnames(taxa_table)  <- c( "Spyradosoma",          "Onthovivens",     "Faecalibacterium",   "Alloprevotella",       
@@ -98,9 +100,8 @@ taxa_table
 set.seed(1)
 fit_out <- maaslin3(input_data = taxa_table ,
                     input_metadata = metadata,
-                    output = 'hmp2_output',
-                    formula = '~ Season + Sex ',
-                    fixed_effects = "Dry",
+                    output = 'hmp2_output-individual',
+                    formula = '~ Individual + Season ',
                     normalization = 'TSS',
                     transform = 'LOG',
                     augment = TRUE,
