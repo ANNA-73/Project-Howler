@@ -56,7 +56,7 @@ normalized_data <- normalized_data * 100
 # Create final dataframe with genus names
 final_genus <- data.frame(Genus=genus_names, normalized_data)
 colnames(final_genus) <- gsub("\\.", "-", colnames(final_genus))
-write.table(final_genus , "final_genus.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
+# write.table(final_genus , "final_genus.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
 
 final_genus
 
@@ -84,7 +84,9 @@ final_species
 ```
 ```{r}
 
-genus_data <- final_genus
+genus_data <- read.table("final_genus.txt" , header = TRUE , sep = '\t')
+colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
+
 
 metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
 genus_data
@@ -167,8 +169,8 @@ seasonal_summary <- tidy_data %>%
 
 p1
 p2
-ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
-ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
+# ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
+# ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
 
 
 
@@ -212,75 +214,60 @@ p1 <-
   show_colnames = TRUE,
   main = "Heatmap of Top 10 Most Abundant Genera"
 )
-
-ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, height = 12, dpi = 300)
+p1
+# ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, height = 12, dpi = 300)
 
 
 ```
 ```{r}
-# Read the data without headers, treating the first row as data
-genus_data_no_header <- read.table('final_genus.txt', header=FALSE, sep='\t', check.names=FALSE)
 
-# Convert to matrix and ensure numeric, handling NAs
-# We will skip the first row which was previously the header
-numeric_genus_matrix <- as.matrix(genus_data_no_header[-1, ])
-mode(numeric_genus_matrix) <- "numeric"
+library(tibble)
 
-# Check for NA values and remove rows with NAs
-na_rows <- apply(numeric_genus_matrix, 1, function(x) any(is.na(x)))
-clean_genus_matrix <- numeric_genus_matrix[!na_rows, ]
-
-# Transpose the matrix
-clean_genus_matrix_t <- t(clean_genus_matrix)
-
-# Calculate Bray-Curtis distance
-bray_curtis_dist_no_header <- vegdist(clean_genus_matrix_t, method="bray")
-
-# Verify the results
-print("Dimensions of transposed matrix without headers:")
-print(dim(clean_genus_matrix_t))
-
-print("\
-First few values of the distance matrix without headers:")
-print(head(as.vector(as.matrix(bray_curtis_dist_no_header))))
-
-
-
-```
-
-
-
-```{r}
-#### Calculate Bray-Curtis dissimilarity matrix
+# Retry transforming data to wide format
 wide_data <- tidy_data %>%
   select(SampleID, Genus, Abundance) %>%
-  pivot_wider(names_from = Genus, 
-              values_from = Abundance,
-              values_fill = 0)
+  pivot_wider(names_from = Genus, values_from = Abundance, values_fill = 0) %>%
+  column_to_rownames(var = "SampleID")
 
-# Add metadata
-wide_data <- merge(wide_data, 
-                  unique(tidy_data[, c("SampleID", "Individual", "Season")]), 
-                  by = "SampleID")
-genus_cols <- colnames(wide_data)[!colnames(wide_data) %in% c("SampleID", "Individual", "Season")]
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
 
-bray_curtis_matrix <- vegdist(wide_data[, genus_cols], method = "bray")
+# Convert to regular matrix and display first few rows/columns
+bc_matrix <- as.matrix(bray_curtis_matrix)
 
-bray_curtis_matrix_df <- as.data.frame(as.matrix(bray_curtis_matrix))
-write.csv(bray_curtis_matrix_df, "bray_curtis_dissimilarity_matrix.csv")
+# Save the full matrix to a file
+# write.csv(as.matrix(bray_curtis_matrix), "bray_curtis_matrix.csv")
+
 ```
 
+
+
 ```{r}
+
+
 # Perform PCoA using the Bray-Curtis dissimilarity matrix
-pcoa_result <- cmdscale(bray_curtis_matrix, eig = TRUE, k = 2)
+# bray_curtis_matrix <- bray_curtis_matrix[,-1]
+pcoa_result <- cmdscale(bc_matrix, eig = TRUE, k = 2)
 
 # Create a dataframe for plotting
 pcoa_df <- data.frame(
   PCoA1 = pcoa_result$points[,1],
   PCoA2 = pcoa_result$points[,2],
-  Season = wide_data$Season,
-  Individual = wide_data$Individual
+  Season = metadata$Season,
+  Individual = metadata$Individual
 )
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+
+# Calculate variance explained
+variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+
+# Merge with metadata
+pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
 
 # Plot PCoA results by Season
 p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
@@ -312,6 +299,73 @@ ggsave("PCoA of Gut Microbiome Composition by Individual.jpg", plot = p2, width 
 
 
 ```
+
+
+```{r}
+
+# Let's try a different approach with a cleaner visualization
+# First, ensure the months are in the correct order
+month_levels <- c("October 2022", "November 2022", "January 2023", "February 2023", 
+                 "March 2023", "April 2023", "May 2023", "June 2023", 
+                 "September 2023", "October 2023", "November 2023")
+pcoa_data$Month_Year <- ifelse(pcoa_data$Month %in% c("October", "November") & 
+                              as.numeric(as.factor(pcoa_data$Week)) <= 2,
+                              paste(pcoa_data$Month, "2022"),
+                              paste(pcoa_data$Month, "2023"))
+
+pcoa_data$Month_Year <- factor(pcoa_data$Month_Year, levels = month_levels)
+# Create a more focused plot
+p_temporal_clean <- ggplot(pcoa_data, aes(x=Month_Year, y=PCo1, color=Individual, group=Individual)) +
+  geom_line(linewidth=1, alpha=0.7) +
+  geom_point(size=3) +
+  theme_bw() +
+  labs(x="", 
+       y=paste0("PCo1 (", round(variance_explained[1], 1), "%)"),
+       title="Temporal Changes in Gut Microbiome Composition") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.spacing = unit(2, "lines"),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12)) +
+  facet_wrap(~Individual, scales="free_y", ncol=2)
+
+# Print the plot
+print(p_temporal_clean)
+
+# Calculate monthly statistics for each individual
+monthly_stats <- aggregate(PCo1 ~ Month_Year + Individual, data=pcoa_data,
+                         FUN=function(x) c(mean=mean(x), sd=sd(x), n=length(x)))
+
+# Convert the results to a more readable format
+monthly_stats_df <- data.frame(
+  Month_Year = monthly_stats$Month_Year,
+  Individual = monthly_stats$Individual,
+  Mean_PCo1 = monthly_stats$PCo1[,1],
+  SD_PCo1 = monthly_stats$PCo1[,2],
+  N_samples = monthly_stats$PCo1[,3]
+)
+
+print("Monthly statistics by individual:")
+print(monthly_stats_df)
+
+
+ggsave("Temporal_changes_genus_monthly.pdf", plot = p_temporal_clean, width = 8, height = 12)
+
+
+```
+```{r}
+cat("## Analysis of Temporal Dynamics\n")
+cat("Most individuals show distinct shifts between seasons\n
+The largest changes appear to occur between winter (January-February) and spring (March-April) months.\n")
+
+cat("Isa shows the most dramatic fluctuations across months\n
+Jupiler maintains relatively more stable composition across the year\n
+Maia has fewer samples but shows similar patterns to others")
+```
+
+
+
+
 ```{r}
 set.seed(123) # for reproducibility
 
@@ -406,6 +460,10 @@ ggsave("PERMANOVA.jpg", plot = p1, width = 6, height = 4, dpi = 300)
 ```
 
 ```{r}
+###let's explore core genera for each individual, present in at least 50% of samples
+
+
+
 
 ```
 
