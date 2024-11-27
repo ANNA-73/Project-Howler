@@ -191,22 +191,55 @@ top10_genera
 
 ```
 ```{r}
-# Prepare data for heatmap
-heatmap_data <- tidy_data %>%
-  filter(Genus %in% top10_genera) %>%
-  group_by(SampleID, Genus) %>%
-  summarize(mean_abundance = mean(Abundance)) %>%
-  spread(key = Genus, value = mean_abundance, fill = 0) %>%
+
+```
+
+
+```{r}
+# Filter for top 10 genera
+top10_genera <- mean_abundance$Genus[1:10]
+filtered_data <- tidy_data %>%
+  filter(Genus %in% top10_genera)
+
+# Create a pivot table for the heatmap
+heatmap_data <- filtered_data %>%
+  select(SampleID, Genus, Abundance) %>%
+  spread(key = Genus, value = Abundance, fill = 0) %>%
   column_to_rownames(var = "SampleID")
 
+# Replace NA values with 0
+heatmap_data[is.na(heatmap_data)] <- 0
 
+# Transpose the heatmap data
+heatmap_data <- t(heatmap_data)
 
-# Create the heatmap
-p1 <- 
-  pheatmap(
+# Load metadata for annotations
+metadata <- read.csv("howlermeta.csv")
+
+# Ensure metadata columns match the SampleID in heatmap_data
+metadata <- metadata %>%
+  filter(SampleID %in% colnames(heatmap_data))
+
+# Prepare annotation data
+annotation_data <- metadata %>%
+  select(SampleID, Season, Individual) %>%
+  column_to_rownames(var = "SampleID")
+
+# Convert Season and Individual to factors
+annotation_data$Season <- as.factor(annotation_data$Season)
+annotation_data$Individual <- as.factor(annotation_data$Individual)
+
+annotation_colors <- list(
+  Season = c("Dry" = "brown", "Intermediate" = "yellow", "Rain" = "blue"),
+  Individual = c("Dos" = "red", "Hugo" = "purple", "Isa" = "brown", "Jupiler" = "pink", "Melanie" = "orange", "Maia" = "green", "Uno" = "cyan")
+)
+
+# Create the heatmap with annotations
+p1 <- pheatmap(
   heatmap_data,
-  scale = "row",
- color             = magma(10),
+  annotation_col = annotation_data,  # Use annotation_col for x-axis annotations
+  annotation_colors = annotation_colors,
+  color = viridis::magma(10),  # Ensure the color palette is correctly specified
   border_color = "black",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
@@ -215,10 +248,18 @@ p1 <-
   main = "Heatmap of Top 10 Most Abundant Genera"
 )
 p1
-# ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, height = 12, dpi = 300)
+ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 10, height = 8, dpi = 300)
 
 
 ```
+
+```{r}
+
+
+
+```
+
+
 ```{r}
 
 library(tibble)
@@ -303,24 +344,19 @@ ggsave("PCoA of Gut Microbiome Composition by Individual.jpg", plot = p2, width 
 
 ```{r}
 
-# Let's try a different approach with a cleaner visualization
-# First, ensure the months are in the correct order
-month_levels <- c("October 2022", "November 2022", "January 2023", "February 2023", 
-                 "March 2023", "April 2023", "May 2023", "June 2023", 
-                 "September 2023", "October 2023", "November 2023")
-pcoa_data$Month_Year <- ifelse(pcoa_data$Month %in% c("October", "November") & 
-                              as.numeric(as.factor(pcoa_data$Week)) <= 2,
-                              paste(pcoa_data$Month, "2022"),
-                              paste(pcoa_data$Month, "2023"))
+# Correct the order of months starting from October
+month_levels <- c("October", "November", "December", "January", "February", "March", "April", "May", "June", "July", "August", "September")
 
-pcoa_data$Month_Year <- factor(pcoa_data$Month_Year, levels = month_levels)
-# Create a more focused plot
-p_temporal_clean <- ggplot(pcoa_data, aes(x=Month_Year, y=PCo1, color=Individual, group=Individual)) +
+# Ensure Month is a factor with the correct levels
+pcoa_data$Month <- factor(pcoa_data$Month, levels = month_levels)
+
+# Recreate the plot with simplified months
+p_temporal_clean <- ggplot(pcoa_data, aes(x=Month, y=PCo1, color=Individual, group=Individual)) +
   geom_line(linewidth=1, alpha=0.7) +
   geom_point(size=3) +
   theme_bw() +
   labs(x="", 
-       y=paste0("PCo1 (", round(variance_explained[1], 1), "%)"),
+       y="PCo1",
        title="Temporal Changes in Gut Microbiome Composition") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1),
         panel.grid.minor = element_blank(),
@@ -333,12 +369,12 @@ p_temporal_clean <- ggplot(pcoa_data, aes(x=Month_Year, y=PCo1, color=Individual
 print(p_temporal_clean)
 
 # Calculate monthly statistics for each individual
-monthly_stats <- aggregate(PCo1 ~ Month_Year + Individual, data=pcoa_data,
+monthly_stats <- aggregate(PCo1 ~ Month + Individual, data=pcoa_data,
                          FUN=function(x) c(mean=mean(x), sd=sd(x), n=length(x)))
 
 # Convert the results to a more readable format
 monthly_stats_df <- data.frame(
-  Month_Year = monthly_stats$Month_Year,
+  Month = monthly_stats$Month,
   Individual = monthly_stats$Individual,
   Mean_PCo1 = monthly_stats$PCo1[,1],
   SD_PCo1 = monthly_stats$PCo1[,2],
@@ -348,6 +384,9 @@ monthly_stats_df <- data.frame(
 print("Monthly statistics by individual:")
 print(monthly_stats_df)
 
+# Save the plot
+
+
 
 ggsave("Temporal_changes_genus_monthly.pdf", plot = p_temporal_clean, width = 8, height = 12)
 
@@ -356,7 +395,9 @@ ggsave("Temporal_changes_genus_monthly.pdf", plot = p_temporal_clean, width = 8,
 ```{r}
 cat("## Analysis of Temporal Dynamics\n")
 cat("Most individuals show distinct shifts between seasons\n
-The largest changes appear to occur between winter (January-February) and spring (March-April) months.\n")
+The largest changes appear to occur between winter (January-February) and spring (March-April) months.\n
+grouped data by individual and time, then viz changes in Bray-Curtis distances or PCoA coordinates over time\n\n"
+)
 
 cat("Isa shows the most dramatic fluctuations across months\n
 Jupiler maintains relatively more stable composition across the year\n
