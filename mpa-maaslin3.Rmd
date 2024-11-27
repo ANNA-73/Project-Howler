@@ -58,7 +58,12 @@ metadata$Sex <-
 metadata$Season <-
   factor(metadata$Season, levels = c( "Dry", "Intermediate", "Rain" ))
 metadata$Age <- 
-  factor(metadata$Age)
+  factor(metadata$Age , levels = c("Adult", "Juvenile"))
+metadata$Reproductive <- 
+  factor(metadata$Reproductive , levels = c("Not pregnant", "Pregnant"))
+metadata$Week <- 
+  factor(metadata$Week , levels = c("1", "2", "3" , "4", "5"))
+
 
 colnames(taxa_table) <- gsub("\\.", "_", colnames(taxa_table))
 
@@ -115,4 +120,27 @@ fit_out <- maaslin3(input_data = taxa_table ,
 
 
 
+```{r}
+
+set.seed(1)
+fit_out <- maaslin3(input_data = taxa_table ,
+                    input_metadata = metadata,
+                    output = 'maaslin3_2fixed_random',
+                    fixed_effects = c('Individual', 'Season') ,
+                    reference = c(' Isa', 'Intermediate') ,
+                    random_effects = 'Week',
+                    min_prevalence = 0.1 ,
+                    normalization = 'TSS',
+                    transform = 'LOG',
+                    augment = TRUE,
+                    standardize = TRUE,
+                    max_significance = 0.1,
+                    median_comparison_abundance = TRUE,
+                    median_comparison_prevalence = FALSE,
+                    max_pngs = 250,
+                    cores = 1)
+
+
+
+```
 
