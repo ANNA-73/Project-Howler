@@ -1,0 +1,466 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+
+setwd("C://Users/Owner/Desktop/Howler2/Howler/R-humaan/")
+
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(pheatmap)
+library(viridis)
+library(ggplot2)
+```
+```{r}
+# Read the data
+df <- read.table('merged_data.txt', header=TRUE, sep='\t')
+
+# Calculate relative abundance
+calculate_relative_abundance <- function(abundance_values) {
+    return(abundance_values / sum(abundance_values))
+}
+
+# Create dataframe with relative abundance
+df_relative <- df %>%
+    group_by(SampleID) %>%
+    mutate(Relative_Abundance = calculate_relative_abundance(Abundance)) %>%
+    ungroup()
+
+# Calculate mean relative abundance for each pathway by season
+mean_abundance_season <- df_relative %>%
+    group_by(Pathway, Season) %>%
+    summarize(Mean_Relative_Abundance = mean(Relative_Abundance), .groups = "drop")
+
+# Get top 10 pathways
+top_10_pathways_season <- mean_abundance_season %>%
+    group_by(Pathway) %>%
+    summarize(Total_Mean_Abundance = mean(Mean_Relative_Abundance), .groups = "drop") %>%
+    arrange(desc(Total_Mean_Abundance)) %>%
+    head(10)
+
+# Create matrix for heatmap
+mean_abundance_matrix <- df_relative %>%
+    filter(Pathway %in% top_10_pathways_season$Pathway) %>%
+    group_by(Pathway, Season) %>%
+    summarize(Mean_Relative_Abundance = mean(Relative_Abundance), .groups = "drop") %>%
+    pivot_wider(names_from = Season, 
+                values_from = Mean_Relative_Abundance)
+
+# Convert to matrix format
+matrix_data <- as.matrix(mean_abundance_matrix[,-1])
+rownames(matrix_data) <- mean_abundance_matrix$Pathway
+
+# # Create shorter names for pathways
+# short_names <- gsub("^([^:]+).*", "\\1", rownames(matrix_data))
+# rownames(matrix_data) <- short_names
+
+# Create heatmap
+heatmap_plot <- pheatmap(matrix_data,
+         scale = "row",  # Scale rows for better visualization
+         cluster_cols = FALSE,  # Don't cluster seasons
+         cluster_rows = TRUE,   # Cluster pathways
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         main = "Top 10 Pathways Relative Abundance Across Seasons",
+         color = viridis(100),
+         fontsize_row = 8,
+         angle_col = 45,
+         display_numbers = TRUE,
+         number_format = "%.3f")
+
+# save
+ggsave("pathway_heatmap.pdf", plot = heatmap_plot$gtable, width = 10, height = 8)
+```
+
+```{r}
+
+### I'm averaging the relative abundance of each pathway across all samples associated with each individual, regardless of the season
+
+individual_abundance_matrix <- df_relative %>%
+    filter(Pathway %in% top_10_pathways_season$Pathway) %>%
+    group_by(Pathway, Individual) %>%
+    summarize(Mean_Relative_Abundance = mean(Relative_Abundance), .groups = "drop") %>%
+    pivot_wider(names_from = Individual, 
+                values_from = Mean_Relative_Abundance)
+
+# Convert to matrix format
+matrix_data <- as.matrix(individual_abundance_matrix[,-1])
+rownames(matrix_data) <- individual_abundance_matrix$Pathway
+
+# Create shorter names for pathways
+short_names <- gsub("^([^:]+).*", "\\1", rownames(matrix_data))
+rownames(matrix_data) <- short_names
+
+# Create heatmap
+pathway_ind <- pheatmap(matrix_data,
+         scale = "row",  # Scale rows for better visualization
+         cluster_cols = FALSE,  # Don't cluster individuals
+         cluster_rows = TRUE,  # Cluster pathways
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         main = "Top 10 Pathways Relative Abundance Across 7 Individuals",
+         color = viridis(100),
+         fontsize_row = 10,
+         fontsize_col = 10,
+         angle_col = 0,
+         display_numbers = TRUE,
+         number_format = "%.3f")
+
+ggsave("pathway_ind_heatmap.pdf", plot = pathway_ind$gtable, width = 10, height = 8)
+# Print the individuals
+print("Individuals included:")
+print(colnames(matrix_data))
+```
+
+```{r}
+# Load required libraries
+library(dplyr)
+library(tidyr)
+library(pheatmap)
+library(viridis)
+
+# Calculate mean relative abundance per individual and season for each pathway
+individual_season_abundance <- df_relative %>%
+    filter(Pathway %in% top_10_pathways_season$Pathway) %>%
+    group_by(Pathway, Individual, Season) %>%
+    summarize(Mean_Relative_Abundance = mean(Relative_Abundance), .groups = "drop") %>%
+    # Reorder seasons
+    mutate(Season = factor(Season, levels = c("Dry", "Intermediate", "Rain"))) %>%
+    arrange(Season, Individual) %>%
+    mutate(Individual_Season = paste(Individual, Season, sep="_")) %>%
+    select(-Individual, -Season) %>%
+    pivot_wider(names_from = Individual_Season, 
+                values_from = Mean_Relative_Abundance)
+
+# Convert to matrix format
+matrix_data <- as.matrix(individual_season_abundance[,-1])
+rownames(matrix_data) <- individual_season_abundance$Pathway
+
+# # Create shorter names for pathways
+# short_names <- gsub("^([^:]+).*", "\\1", rownames(matrix_data))
+# rownames(matrix_data) <- short_names
+
+# Create annotation for columns (individuals and seasons)
+column_info <- data.frame(
+    Individual = sub("_.*", "", colnames(matrix_data)),
+    Season = sub(".*_", "", colnames(matrix_data)),
+    row.names = colnames(matrix_data)
+)
+
+# Create color palette
+annotation_colors <- list(
+    Individual = c(Dos = "#E41A1C", 
+                  Hugo = "#377EB8", 
+                  Isa = "#4DAF4A", 
+                  Jupiler = "#984EA3", 
+                  Maia = "#FF7F00", 
+                  Melanie = "#FFFF33", 
+                  Uno = "#A65628"),
+    Season = c(Dry = "#E69F00", 
+              Intermediate = "#56B4E9", 
+              Rain = "#009E73")
+)
+
+# Create heatmap
+pathway_ind_season <-pheatmap(matrix_data,
+         scale = "row",  # Scale rows for better visualization
+         cluster_cols = FALSE,  # Don't cluster columns
+         cluster_rows = TRUE,  # Cluster pathways
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         main = "Top 10 Pathways Relative Abundance Across Individuals and Seasons",
+         color = viridis(100),
+         fontsize_row = 10,
+         fontsize_col = 8,
+         angle_col = 45,
+         annotation_col = column_info,
+         annotation_colors = annotation_colors,
+         display_numbers = TRUE,
+         number_format = "%.3f")
+
+ggsave("pathway_ind_season_heatmap.pdf", plot = pathway_ind_season$gtable, width = 20, height = 8)
+# Print the individuals
+```
+```{r}
+### now grouping by individuals
+# Recalculate the individual_season_abundance but arrange by Individual first
+individual_season_abundance <- df_relative %>%
+    filter(Pathway %in% top_10_pathways_season$Pathway) %>%
+    group_by(Pathway, Individual, Season) %>%
+    summarize(Mean_Relative_Abundance = mean(Relative_Abundance), .groups = "drop") %>%
+    # This time arrange by Individual first, then Season
+    arrange(Individual, Season) %>%
+    mutate(Individual_Season = paste(Individual, Season, sep="_")) %>%
+    select(-Individual, -Season) %>%
+    pivot_wider(names_from = Individual_Season, 
+                values_from = Mean_Relative_Abundance)
+
+# Convert to matrix format
+matrix_data <- as.matrix(individual_season_abundance[,-1])
+rownames(matrix_data) <- individual_season_abundance$Pathway
+
+# Create shorter names for pathways
+short_names <- gsub("^([^:]+).*", "\\1", rownames(matrix_data))
+rownames(matrix_data) <- short_names
+
+# Create annotation for columns (individuals and seasons)
+column_info <- data.frame(
+    Individual = sub("_.*", "", colnames(matrix_data)),
+    Season = sub(".*_", "", colnames(matrix_data)),
+    row.names = colnames(matrix_data)
+)
+
+# Create heatmap
+pathway_seson_ind <- pheatmap(matrix_data,
+         scale = "row",  # Scale rows for better visualization
+         cluster_cols = FALSE,  # Don't cluster columns
+         cluster_rows = TRUE,  # Cluster pathways
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         main = "Top 10 Pathways Relative Abundance Across Individuals and Seasons",
+         color = viridis(100),
+         fontsize_row = 10,
+         fontsize_col = 8,
+         angle_col = 45,
+         annotation_col = column_info,
+         annotation_colors = annotation_colors,
+         display_numbers = TRUE)
+
+
+ggsave("pathway_seson_ind_heatmap.pdf", plot = pathway_seson_ind$gtable, width = 20, height = 8)
+```
+
+```{r}
+
+###let's do permanova, which one explains it better?
+
+# Required packages
+library(tidyverse)
+library(vegan)
+
+# Read and prepare the data
+# Prepare the abundance matrix
+abundance_matrix <- df %>%
+    select(SampleID, Pathway, Abundance) %>%
+    pivot_wider(names_from = Pathway, 
+                values_from = Abundance,
+                values_fill = 0)
+
+# Convert to matrix format
+abundance_data <- as.matrix(abundance_matrix[,-1])
+rownames(abundance_data) <- abundance_matrix$SampleID
+
+# Prepare metadata
+metadata <- df %>%
+    select(SampleID, Individual, Age, Sex, Reproductive, Season) %>%
+    distinct()
+rownames(metadata) <- metadata$SampleID
+
+# Ensure matching order
+abundance_data <- abundance_data[rownames(metadata),]
+
+# Calculate Bray-Curtis distance
+bc_dist <- vegdist(abundance_data, method = "bray")
+
+# Function to run PERMANOVA and extract results
+run_adonis <- function(variable, dist_matrix, metadata) {
+    formula <- as.formula(paste("dist_matrix ~", variable))
+    result <- adonis2(formula, data = metadata, permutations = 999)
+    return(data.frame(
+        Variable = variable,
+        R2 = result$R2[1],
+        P_value = result$`Pr(>F)`[1]
+    ))
+}
+
+# Run PERMANOVA for each variable
+variables <- c("Individual", "Age", "Sex", "Reproductive", "Season")
+results <- do.call(rbind, lapply(variables, run_adonis, bc_dist, metadata))
+
+# Process results
+results <- results %>%
+    arrange(desc(R2)) %>%
+    mutate(
+        R2 = R2 * 100,  # Convert to percentage
+        significance = case_when(
+            P_value < 0.001 ~ "***",
+            P_value < 0.01 ~ "**",
+            P_value < 0.05 ~ "*",
+            TRUE ~ "ns"
+        ),
+        color = if_else(P_value < 0.05, "#4C72B0", "#C44E52")  # Nature-style colors
+    )
+
+# Create the plot
+p <- ggplot(results, aes(x = reorder(Variable, R2), y = R2)) +
+    # Bars
+    geom_bar(stat = "identity", aes(fill = color)) +
+    scale_fill_identity() +
+    
+    # Error bars
+    geom_errorbar(aes(ymin = R2, ymax = R2), width = 0.2) +
+    
+    # Significance stars
+    geom_text(aes(label = significance, y = R2 + 1), 
+              size = 5, vjust = -0.5) +
+    
+    # Percentage labels
+    geom_text(aes(label = sprintf("%.1f%%", R2), y = R2/2),
+              color = "white", size = 3.5) +
+    
+    # Theme and styling
+    theme_minimal() +
+    theme(
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_line(color = "grey90"),
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 10, color = "black"),
+        axis.text.y = element_text(size = 10, color = "black"),
+        axis.title = element_text(size = 12, color = "black"),
+        plot.title = element_text(size = 14, face = "bold", color = "black", hjust = 0),
+        plot.subtitle = element_text(size = 10, color = "grey30", hjust = 0, margin = margin(b = 20)),
+        plot.caption = element_text(size = 8, color = "grey30", hjust = 1, margin = margin(t = 20))
+    ) +
+    
+    # Labels
+    labs(
+        x = "Metadata Variable",
+        y = "Variance Explained (%)",
+        title = "Variance in Pathway Abundance Explained by Metadata Variables",
+        subtitle = "* P < 0.05, ** P < 0.01, *** P < 0.001, ns: not significant",
+        caption = "PERMANOVA analysis using Bray-Curtis dissimilarity"
+    ) +
+    
+    # Y-axis scaling
+    scale_y_continuous(limits = c(0, max(results$R2) * 1.3),
+                      breaks = seq(0, ceiling(max(results$R2)), by = 5))
+
+# Save the plot
+ggsave("variance_explained_nature_style.pdf", p, width = 8, height = 6, dpi = 300, units = "in")
+
+# Display the plot and results
+print("PERMANOVA Results:")
+print(results)
+print(p)
+```
+```{r}
+
+####### ok now for differential abundace testing
+
+# Load necessary libraries
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+# install.packages("DESeq2")
+library(DESeq2)
+library(pheatmap)
+library(RColorBrewer)
+
+# Load required libraries
+library(DESeq2)
+library(tidyverse)
+
+# Read the merged data file
+merged_data <- df
+
+# Extract count matrix and metadata from the merged data
+count_matrix <- merged_data %>%
+  select(SampleID, Pathway, Abundance) %>%
+  spread(key = SampleID, value = Abundance)
+
+# Set rownames to Pathway
+rownames(count_matrix) <- count_matrix$Pathway
+count_matrix <- count_matrix[,-1]  # Remove the Pathway column
+
+# Extract metadata
+metadata <- merged_data %>%
+  select(SampleID, Individual, Age, Sex) %>%
+  distinct()
+
+# Align metadata with count matrix
+metadata_aligned <- metadata[match(colnames(count_matrix), metadata$SampleID), ]
+
+# Convert abundance values to integers
+count_matrix[] <- lapply(count_matrix, as.integer)
+
+# Verify the conversion
+print("Converted count matrix to integers:")
+print(head(count_matrix))
+
+# Recreate DESeq2 object with integer counts
+dds <- DESeqDataSetFromMatrix(
+    countData = as.matrix(count_matrix),
+    colData = metadata_aligned,
+    design = ~ Individual
+)
+
+# Run DESeq2 to estimate size factors and dispersions
+dds <- DESeq(dds)
+
+# Calculate normalized counts
+normalized_counts <- counts(dds, normalized=TRUE)
+
+# Verify the creation of normalized_counts
+print("Normalized counts matrix:")
+print(head(normalized_counts))
+
+
+
+```
+```{r}
+# Get the top 10 most variable pathways
+row_vars <- apply(normalized_counts, 1, var)
+top_pathways <- names(sort(row_vars, decreasing=TRUE))[1:10]
+
+# Prepare the data for plotting
+plot_data <- as.data.frame(normalized_counts[top_pathways,])
+plot_data$Pathway <- rownames(plot_data)
+
+# Convert to long format for plotting
+library(tidyr)
+plot_data_long <- pivot_longer(plot_data, 
+                             cols = -Pathway, 
+                             names_to = "Sample", 
+                             values_to = "Expression")
+
+# Add metadata information
+plot_data_long <- merge(plot_data_long, 
+                       data.frame(Sample = metadata_aligned$SampleID,
+                                Individual = metadata_aligned$Individual,
+                                Sex = metadata_aligned$Sex,
+                                Age = metadata_aligned$Age),
+                       by.x = "Sample",
+                       by.y = "Sample")
+
+# Create the boxplot
+library(ggplot2)
+p <- ggplot(plot_data_long, aes(x = Individual, y = Expression, fill = Individual)) +
+    geom_boxplot() +
+    facet_wrap(~Pathway, scales = "free_y", ncol = 2) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.position = "none",
+          strip.text = element_text(size = 8)) +
+    labs(title = "Top 10 Variable Pathways Expression by Individual",
+         x = "Individual",
+         y = "Normalized Expression (counts)") +
+    scale_fill_brewer(palette = "Set2") +
+    scale_y_continuous(labels = scales::scientific)
+
+# Display the plot
+print(p)
+
+# Print the top 10 pathways
+print("\
+Top 10 most variable pathways:")
+print(top_pathways)
+
+ggsave("exxpression by individual.pdf", p, width = 8, height = 6, dpi = 300, units = "in")
+```
+

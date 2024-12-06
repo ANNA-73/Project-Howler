@@ -1,0 +1,177 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(maaslin3)
+
+```
+
+
+
+```{r}
+### this one works
+
+
+path_table <- read.table("edited_pathabundance.txt",
+                           header           = TRUE,
+                           sep              = "\t", 
+                           stringsAsFactors = FALSE)
+```
+
+
+```{r}
+# path_table$Path <- gsub("-", "_", path_table$Path)
+# path_table$Path <- gsub(",", "_", path_table$Path)
+# path_table$Path <- gsub("\\(", " ", path_table$Path)
+# path_table$Path <- gsub("\\)", " ", path_table$Path)
+# path_table$Path <- gsub("\\|", " ", path_table$Path)
+# path_table$Path <- gsub("&", " ", path_table$Path)
+# path_table$Path <- gsub("\\.", "_", path_table$Path)
+# path_table$Path <- gsub("/", "_", path_table$Path)
+# path_table$Path <- gsub("\\\\", "_", path_table$Path)
+# path_table$Path <- gsub("'", "_", path_table$Path)
+# path_table$Path <- gsub("\"", "_", path_table$Path)
+# path_table$Path <- gsub("“", "_", path_table$Path)
+# path_table$Path <- gsub("”", "_", path_table$Path)
+# path_table$Path <- gsub(":", "_", path_table$Path)
+# path_table$Path <- gsub(";", "_", path_table$Path)
+
+# Transpose the data frame
+t_path_table <- t(path_table)
+
+# Convert the transposed matrix back to a data frame (optional)
+t_path_table <- as.data.frame(t_path_table)
+
+# View the transposed data frame
+print(t_path_table)
+
+write.table(t_path_table, "t_path_table.txt", sep = "\t")
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+t_path_table <- read.table("t_path_table.txt",
+                           header           = TRUE,
+                           sep              = "\t", 
+                           stringsAsFactors = FALSE)
+
+t_path_table$Path <- gsub("-", "_", t_path_table$Path)
+t_path_table$Path <- gsub(",", "_", t_path_table$Path)
+t_path_table$Path <- gsub("\\(", " ", t_path_table$Path)
+t_path_table$Path <- gsub("\\)", " ", t_path_table$Path)
+t_path_table$Path <- gsub("\\|", " ", t_path_table$Path)
+t_path_table$Path <- gsub("&", " ", t_path_table$Path)
+t_path_table$Path <- gsub("\\.", "_", t_path_table$Path)
+t_path_table$Path <- gsub("/", "_", t_path_table$Path)
+t_path_table$Path <- gsub("\\\\", "_", t_path_table$Path)
+t_path_table$Path <- gsub("'", "_", t_path_table$Path)
+t_path_table$Path <- gsub("\"", "_", t_path_table$Path)
+t_path_table$Path <- gsub("“", "_", t_path_table$Path)
+t_path_table$Path <- gsub("”", "_", t_path_table$Path)
+t_path_table$Path <- gsub(":", "_", t_path_table$Path)
+t_path_table$Path <- gsub(";", "_", t_path_table$Path)
+```
+
+
+```{r}
+metadata <-  read.table("howlermeta.txt",
+                          header           = TRUE,
+                          sep              = "\t", 
+                          stringsAsFactors = FALSE)
+
+metadata$SampleID <- gsub("-", "_", metadata$SampleID)
+
+metadata$Individual <-
+  factor(metadata$Individual, levels = c("Dos" , "Hugo", "Isa", "Jupiler", "Melanie", "Maia", "Uno"))
+metadata$Sex <-
+  factor(metadata$Sex, levels = c("Male","Female"))
+metadata$Season <-
+  factor(metadata$Season, levels = c( "Dry", "Intermediate", "Rain" ))
+metadata$Age <- 
+  factor(metadata$Age , levels = c("Adult", "Juvenile"))
+metadata$Reproductive <- 
+  factor(metadata$Reproductive , levels = c("Not pregnant", "Pregnant"))
+metadata$Week <- 
+  factor(metadata$Week , levels = c("1", "2", "3" , "4", "5"))
+
+colnames(t_path_table) <- gsub("\\.", "_", colnames(t_path_table))
+
+
+row.names(t_path_table) = t_path_table$Path
+t_path_table$Path   <- NULL
+
+row.names(metadata) = metadata$SampleID
+metadata$SampleID   <- NULL
+
+metadata
+t_path_table  
+
+```
+
+```{r}
+
+set.seed(1)
+fit_out <- maaslin3(input_data = t_path_table ,
+                    input_metadata = metadata,
+                    output = 'maaslin3_path',
+                    formula = '~ Individual + Season ',
+                    normalization = 'TSS',
+                    transform = 'LOG',
+                    augment = TRUE,
+                    standardize = TRUE,
+                    max_significance = 0.1,
+                    median_comparison_abundance = TRUE,
+                    median_comparison_prevalence = FALSE,
+                    max_pngs = 250,
+                    cores = 1)
+
+
+```
+
+```{r}
+set.seed(1)
+fit_out <- maaslin3(input_data = t_path_table ,
+                    input_metadata = metadata,
+                    output = 'maaslin3_path_Melanie_random',
+                    fixed_effects = 'Individual',
+                    reference = ' Dos', 
+                    random_effects = 'Week',
+                    min_prevalence = 0.1 ,
+                    normalization = 'TSS',
+                    transform = 'LOG',
+                    augment = TRUE,
+                    standardize = TRUE,
+                    max_significance = 0.1,
+                    median_comparison_abundance = TRUE,
+                    median_comparison_prevalence = FALSE,
+                    max_pngs = 250,
+                    cores = 1)
+
+
+```
+
+```{r}
+
+set.seed(1)
+fit_out <- maaslin3(input_data = t_path_table ,
+                    input_metadata = metadata,
+                    output = 'maaslin3_path_all',
+                    formula = '~ Individual + Season + Sex + Reproductive + Age',
+                    normalization = 'TSS',
+                    transform = 'LOG',
+                    augment = TRUE,
+                    standardize = TRUE,
+                    max_significance = 0.1,
+                    median_comparison_abundance = TRUE,
+                    median_comparison_prevalence = FALSE,
+                    max_pngs = 250,
+                    cores = 1)
+
+```
+

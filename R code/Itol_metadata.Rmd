@@ -1,0 +1,45 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(readr)
+```
+
+
+```{r}
+# Read the CSV file
+setwd("C:/Users/Owner/Desktop/Project-Howler")
+df <- read.csv("Prevotella_bins.csv")
+
+# Display the first few rows to see what we're working with
+print(head(df))
+
+```
+```{r}
+# Create SampleID by extracting everything before "-bin"
+df$SampleID <- sub("-bin.*", "", df$user_genome)
+
+# Create new dataset with just the two columns we want
+new_df <- df[, c("user_genome", "SampleID")]
+
+# Display the first few rows of the new dataset
+print(head(new_df))
+```
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler/R-mpa")
+# Read the metadata file
+metadata <- read.csv("howlermeta.csv")
+
+# Perform an inner join to keep only rows present in the new dataset
+merged_df <- merge(new_df, metadata, by = "SampleID")
+
+# Reorder columns to place user_genome first
+merged_df <- merged_df[, c("user_genome", setdiff(names(merged_df), "user_genome"))]
+
+# Display the first few rows of the reordered dataset
+print(head(merged_df))
+
+write.table(merged_df , "prevotella_bins_metadata", sep = "\t")
+```
+

@@ -1,0 +1,372 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+###libraries
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+
+```
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler/R-humaan")
+path <- read.table("pathabundance-cmp.tsv" , header = TRUE , sep = '\t')
+path
+
+```
+```{r}
+path <- path[!grepl("UNINTEGRATED", path$Pathway), ]
+path <- path[!grepl("UNMAPPED", path$Pathway), ]
+
+# Display the updated dataframe
+head(path)
+
+```
+```{r}
+### to normalize the data 
+
+#relative abundances
+
+# Store genus names
+path_names <- path[,1]
+
+# Convert the numerical data to matrix for normalization
+numerical_data <- as.matrix(path[,-1])  # exclude first column but keep it stored
+
+# Normalize
+normalized_data <- sweep(numerical_data, 2, colSums(numerical_data), '/')
+normalized_data <- normalized_data * 100
+
+# Create final dataframe with genus names
+final_path <- data.frame(path_names, normalized_data)
+colnames(final_path ) <- gsub("\\.", "-", colnames(final_path ))
+write.table(final_path  , "final_path.txt ", sep = "\t" , row.names = FALSE, quote = FALSE)
+
+final_path 
+
+
+```
+```{r}
+path_data <- read.table("final_path.txt" , header = TRUE , sep = '\t')
+colnames(path_data) <- gsub("\\.", "-", colnames(path_data))
+
+
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+path_data
+metadata
+
+
+```
+```{r}
+##clean and merge
+
+
+path_long <- path_data %>%
+  pivot_longer(cols = -path_names, names_to = "SampleID", values_to = "Abundance")
+
+path_long$SampleID <- gsub("_Abundance", "", path_long$SampleID)
+path_long
+# Merge with metadata
+tidy_data <- merge(path_long, metadata, by="SampleID")
+
+
+tidy_data
+
+```
+
+
+```{r}
+# Calculate relative abundance
+path_long_normalized <- path_long %>%
+  group_by(SampleID) %>%
+  mutate(RelativeAbundance = Abundance / sum(Abundance)) %>%
+  ungroup()
+
+# Merge with metadata
+tidy_data <- merge(path_long_normalized, metadata, by="SampleID")
+
+# Show the first few rows of the final dataset
+print(head(tidy_data))
+```
+
+
+
+
+
+```{r}
+# Calculate mean relative abundance for each pathway
+top_pathways <- tidy_data %>%
+  group_by(path_names) %>%
+  summarize(
+    mean_abundance = mean(RelativeAbundance),
+    sd_abundance = sd(RelativeAbundance)
+  ) %>%
+  arrange(desc(mean_abundance)) %>%
+  head(10)
+
+# Print the top 10 pathways
+print(top_pathways)
+
+# Create a visualization of top 10 pathways
+library(ggplot2)
+
+# Simplify pathway names for better visualization
+top_pathways$short_names <- gsub("^([^:]+:)\\s*(.+?)\\|.*$", "\\1\
+\\2", top_pathways$path_names)
+
+# Create the plot
+ggplot(top_pathways, aes(x = reorder(short_names, mean_abundance), y = mean_abundance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_abundance - sd_abundance, 
+                    ymax = mean_abundance + sd_abundance), 
+                width = 0.2) +
+  coord_flip() +
+  theme_minimal() +
+  labs(x = "Pathway", 
+       y = "Mean Relative Abundance",
+       title = "Top 10 Most Abundant Pathways") +
+  theme(axis.text.y = element_text(size = 8))
+
+
+```
+```{r}
+t# Let's get the actual top 10 pathways without splitting by the classification
+top_10_pathways <- tidy_data %>%
+  # First split the path_names to get the base pathway name
+  mutate(base_pathway = sub("\\|.*$", "", path_names)) %>%
+  group_by(base_pathway) %>%
+  summarize(
+    total_abundance = mean(RelativeAbundance)
+  ) %>%
+  arrange(desc(total_abundance)) %>%
+  head(10)
+
+print("Top 10 base pathways:")
+print(top_10_pathways)
+
+# Now create the heatmap matrix with these pathways
+heatmap_matrix <- tidy_data %>%
+  # Create the base pathway column
+  mutate(base_pathway = sub("\\|.*$", "", path_names)) %>%
+  # Filter for top 10 base pathways
+  filter(base_pathway %in% top_10_pathways$base_pathway) %>%
+  # Sum abundances for the same base pathway
+  group_by(base_pathway, SampleID) %>%
+  summarize(RelativeAbundance_Percent = sum(RelativeAbundance) * 100, .groups = "drop") %>%
+  # Create the matrix
+  pivot_wider(names_from = SampleID, 
+              values_from = RelativeAbundance_Percent) %>%
+  as.data.frame()
+
+# Convert row names
+row_names <- heatmap_matrix$base_pathway
+heatmap_matrix <- heatmap_matrix[,-1]
+rownames(heatmap_matrix) <- row_names
+
+# Convert to matrix
+heatmap_matrix <- as.matrix(heatmap_matrix)
+
+# Create annotation data frame for samples
+annotation_col <- metadata %>%
+  select(SampleID, Season, Sex) %>%
+  column_to_rownames("SampleID")
+
+# Update the colors to include all seasons
+ann_colors <- list(
+    Season = c(Rain = "#2166AC", Intermediate = "#B2182B", Dry = "#4DAF4A"),
+    Sex = c(Male = "#4DAF4A", Female = "#FF7F00")
+)
+
+# Create the heatmap
+p2 <- pheatmap(heatmap_matrix,
+         scale = "none",  # Don't scale since we already have percentages
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         annotation_col = annotation_col,
+         annotation_colors = ann_colors,
+         color = viridis::magma(10),  # Ensure the color palette is correctly specified
+         border_color = "black",
+         fontsize_row = 8,
+         fontsize_col = 8,
+         angle_col = 45,
+         main = "Top 10 Pathways Relative Abundance (%)",
+         display_numbers = FALSE,
+         number_format = "%.2f",
+         )
+
+ggsave("Heatmap of Top 10 Most Abundant PW.jpg", plot = p2, width = 10, height = 8, dpi = 300)
+
+```
+```{r}
+library(tibble)
+
+# Retry transforming data to wide format
+wide_data <- tidy_data %>%
+  select(SampleID, path_names, RelativeAbundance) %>%
+  pivot_wider(names_from = path_names, values_from = RelativeAbundance, values_fill = 0) %>%
+  column_to_rownames(var = "SampleID")
+
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
+
+# Convert to regular matrix and display first few rows/columns
+bc_matrix <- as.matrix(bray_curtis_matrix)
+bc_matrix
+# Save the full matrix to a file
+write.csv(as.matrix(bray_curtis_matrix), "bray_curtis_matrix_humaan.csv")
+```
+
+```{r}
+# Perform PCoA using the Bray-Curtis dissimilarity matrix
+# bray_curtis_matrix <- bray_curtis_matrix[,-1]
+pcoa_result <- cmdscale(bc_matrix, eig = TRUE, k = 2)
+
+# Create a dataframe for plotting
+pcoa_df <- data.frame(
+  PCoA1 = pcoa_result$points[,1],
+  PCoA2 = pcoa_result$points[,2],
+  Season = metadata$Season,
+  Individual = metadata$Individual
+)
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+
+# Calculate variance explained
+variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+
+# Merge with metadata
+pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
+
+# Plot PCoA results by Season
+p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome PW by Season",
+    x = "PCoA1",
+    y = "PCoA2"
+  ) +
+  stat_ellipse(level = 0.95)
+
+# Plot PCoA results by Individual
+p2 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Individual)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome PW by Individual",
+    x = "PCoA1",
+    y = "PCoA2"
+  )
+
+# Print plots
+print(p1)
+print(p2)
+
+```
+```{r}
+# Correct the order of months starting from October
+month_levels <- c("October", "November", "December", "January", "February", "March", "April", "May", "June", "July", "August", "September")
+
+# Ensure Month is a factor with the correct levels
+pcoa_data$Month <- factor(pcoa_data$Month, levels = month_levels)
+pcoa_data_pathway <- pcoa_data[order(pcoa_data$Individual, pcoa_data$Month), ]
+pcoa_data_pathway$PCo1_diff <- ave(pcoa_data_pathway$PCo1, pcoa_data_pathway$Individual, 
+                                   FUN=function(x) c(NA, diff(x)))
+# Recreate the plot with simplified months
+p_temporal_clean <- ggplot(pcoa_data, aes(x=Month, y=PCo1, color=Individual, group=Individual)) +
+  geom_line(linewidth=1, alpha=0.7) +
+  geom_point(size=3) +
+  theme_bw() +
+  labs(x="", 
+       y="PCo1",
+       title="Temporal Changes in Gut Microbiome PW") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.spacing = unit(2, "lines"),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12)) +
+  facet_wrap(~Individual, scales="free_y", ncol=2)
+
+# Print the plot
+print(p_temporal_clean)
+
+# Calculate monthly statistics for each individual
+monthly_stats <- aggregate(PCo1 ~ Month + Individual, data=pcoa_data,
+                         FUN=function(x) c(mean=mean(x), sd=sd(x), n=length(x)))
+
+# Convert the results to a more readable format
+monthly_stats_df <- data.frame(
+  Month = monthly_stats$Month,
+  Individual = monthly_stats$Individual,
+  Mean_PCo1 = monthly_stats$PCo1[,1],
+  SD_PCo1 = monthly_stats$PCo1[,2],
+  N_samples = monthly_stats$PCo1[,3]
+)
+
+print("Monthly statistics by individual:")
+print(monthly_stats_df)
+
+# Save the plot
+
+ggsave("Temporal_changes_PW_monthly.pdf", plot = p_temporal_clean, width = 8, height = 12)
+
+```
+
+```{r}
+# Summarize the mean and SD of month-to-month differences for genus data
+genus_summary <- aggregate(PCo1_diff ~ Individual, data=pcoa_data_genus, 
+                           FUN=function(x) c(mean=mean(abs(x), na.rm=TRUE), 
+                                             sd=sd(abs(x), na.rm=TRUE)))
+
+# Summarize the mean and SD of month-to-month differences for pathway data
+pathway_summary <- aggregate(PCo1_diff ~ Individual, data=pcoa_data_pathway, 
+                             FUN=function(x) c(mean=mean(abs(x), na.rm=TRUE), 
+                                               sd=sd(abs(x), na.rm=TRUE)))
+
+```
+
+```{r}
+# Extract mean differences for statistical comparison
+genus_means <- sapply(genus_summary$PCo1_diff, `[`, 1)
+pathway_means <- sapply(pathway_summary$PCo1_diff, `[`, 1)
+
+# Perform a paired t-test
+t_test_result <- t.test(genus_means, pathway_means, paired=TRUE)
+print(t_test_result)
+
+# If data is not normally distributed, use Wilcoxon signed-rank test
+wilcox_test_result <- wilcox.test(genus_means, pathway_means, paired=TRUE)
+print(wilcox_test_result)
+
+```
+
+```{r}
+# Combine data for visualization
+genus_summary$Dataset <- "Genus"
+pathway_summary$Dataset <- "Pathway"
+combined_summary <- rbind(genus_summary, pathway_summary)
+
+# Boxplot of month-to-month differences
+ggplot(combined_summary, aes(x=Dataset, y=PCo1_diff[,1], fill=Dataset)) +
+  geom_boxplot() +
+  labs(x="Dataset", y="Mean Month-to-Month Change in PCo1", 
+       title="Comparison of Temporal Changes in PCo1") +
+  theme_minimal()
+
+```
+

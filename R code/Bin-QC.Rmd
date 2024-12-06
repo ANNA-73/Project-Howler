@@ -1,0 +1,49 @@
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(readr)
+```
+
+```{r}
+
+# Let's try reading the file with fill=TRUE to handle any potential inconsistencies
+checkm_data <- read_tsv('CheckM_summary_table.tsv')
+
+# Create a new column to identify bins meeting the quality threshold
+checkm_data$high_quality <- checkm_data$Completeness > 90 & checkm_data$Contamination < 10
+
+# Create the scatter plot
+p <- ggplot(checkm_data, aes(x=Completeness, y=Contamination, color=high_quality)) +
+  geom_point(alpha=0.6) +
+  scale_color_manual(values=c("grey", "blue")) +
+  geom_hline(yintercept=10, linetype="dashed", color="red", alpha=0.5) +
+  geom_vline(xintercept=90, linetype="dashed", color="red", alpha=0.5) +
+  theme_minimal() +
+  labs(x="Completeness (%)", 
+       y="Contamination (%)",
+       title="MAGs Quality Assessment",
+       color="High Quality\
+(>90% Complete,\
+<10% Contamination)") +
+  theme(legend.position="right")
+
+# Display the plot
+print(p)
+ggsave("MAGs QC.jpg", p, width = 10, height = 8, dpi = 300)
+
+```
+```{r}
+#### find prevotella bins
+
+df <- read.table("gtdbtk.bac120.summary.tsv", header = TRUE, sep = "\t")
+
+# Filter rows containing "Prevotella" in the "classification" column
+filtered_df <- df[grep("Prevotella", df$classification), ]
+
+
+write.csv(filtered_df, "Prevotella_bins.csv", row.names = FALSE)
+
+
+
+```
+
