@@ -8,7 +8,7 @@ This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
 ```{r}
-setwd("C://Users/Owner/Desktop/Howler2/Howler/R-mpa")
+setwd("C://Users/Owner/Desktop/Project-Howler/R-mpa")
 ```
 
 ```{r}
@@ -55,7 +55,8 @@ normalized_data <- normalized_data * 100
 
 # Create final dataframe with genus names
 final_genus <- data.frame(Genus=genus_names, normalized_data)
-
+colnames(final_genus) <- gsub("\\.", "-", colnames(final_genus))
+# write.table(final_genus , "final_genus.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
 
 final_genus
 
@@ -75,21 +76,27 @@ normalized_data <- normalized_data * 100
 final_species <- data.frame(Species=species_names, normalized_data)
 
 
-final_species
+colnames(final_species) <- gsub("\\.", "-", colnames(final_species))
+write.table(final_species , "final_species.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
 
+final_species
 
 ```
 ```{r}
-setwd("C://Users/Owner/Desktop/Howler2/Howler/R-mpa")
 
-genus_data <- final_genus
+genus_data <- read.table("final_genus.txt" , header = TRUE , sep = '\t')
+colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
 
-metadata <- read.csv("C://Users/Owner/Desktop/Howler2/Howler/R-mpa/howlermeta.csv")  # Replace with your actual file name
+
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
 genus_data
 metadata
 
 
 ```
+
+
+
 ```{r}
 
 ##clean and merge
@@ -97,17 +104,13 @@ metadata
 
 genus_long <- genus_data %>%
   pivot_longer(cols = -Genus, names_to = "SampleID", values_to = "Abundance")
-
-# Clean up SampleID to match metadata
-# Remove 'KM.' prefix and add 'KM-' prefix
-genus_long$SampleID <- paste0("KM-", sub("KM\\.", "", genus_long$SampleID))
+genus_long
 
 # Merge with metadata
 tidy_data <- merge(genus_long, metadata, by="SampleID")
 
 
-print(head(tidy_data))
-
+tidy_data
 
 
 ```
@@ -166,8 +169,10 @@ seasonal_summary <- tidy_data %>%
 
 p1
 p2
-ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
-ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
+# ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
+# ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
+
+
 
 
 ```
@@ -186,22 +191,55 @@ top10_genera
 
 ```
 ```{r}
-# Prepare data for heatmap
-heatmap_data <- tidy_data %>%
-  filter(Genus %in% top10_genera) %>%
-  group_by(SampleID, Genus) %>%
-  summarize(mean_abundance = mean(Abundance)) %>%
-  spread(key = Genus, value = mean_abundance, fill = 0) %>%
+
+```
+
+
+```{r}
+# Filter for top 10 genera
+top10_genera <- mean_abundance$Genus[1:10]
+filtered_data <- tidy_data %>%
+  filter(Genus %in% top10_genera)
+
+# Create a pivot table for the heatmap
+heatmap_data <- filtered_data %>%
+  select(SampleID, Genus, Abundance) %>%
+  spread(key = Genus, value = Abundance, fill = 0) %>%
   column_to_rownames(var = "SampleID")
 
+# Replace NA values with 0
+heatmap_data[is.na(heatmap_data)] <- 0
 
+# Transpose the heatmap data
+heatmap_data <- t(heatmap_data)
 
-# Create the heatmap
-p1 <- 
-  pheatmap(
+# Load metadata for annotations
+metadata <- read.csv("howlermeta.csv")
+
+# Ensure metadata columns match the SampleID in heatmap_data
+metadata <- metadata %>%
+  filter(SampleID %in% colnames(heatmap_data))
+
+# Prepare annotation data
+annotation_data <- metadata %>%
+  select(SampleID, Season, Individual) %>%
+  column_to_rownames(var = "SampleID")
+
+# Convert Season and Individual to factors
+annotation_data$Season <- as.factor(annotation_data$Season)
+annotation_data$Individual <- as.factor(annotation_data$Individual)
+
+annotation_colors <- list(
+  Season = c("Dry" = "brown", "Intermediate" = "yellow", "Rain" = "blue"),
+  Individual = c("Dos" = "red", "Hugo" = "purple", "Isa" = "brown", "Jupiler" = "pink", "Melanie" = "orange", "Maia" = "green", "Uno" = "cyan")
+)
+
+# Create the heatmap with annotations
+p1 <- pheatmap(
   heatmap_data,
-  scale = "row",
- color             = magma(10),
+  annotation_col = annotation_data,  # Use annotation_col for x-axis annotations
+  annotation_colors = annotation_colors,
+  color = viridis::magma(10),  # Ensure the color palette is correctly specified
   border_color = "black",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
@@ -209,11 +247,12 @@ p1 <-
   show_colnames = TRUE,
   main = "Heatmap of Top 10 Most Abundant Genera"
 )
-
-ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, height = 12, dpi = 300)
+p1
+ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 10, height = 8, dpi = 300)
 
 
 ```
+
 ```{r}
 
 
@@ -221,38 +260,55 @@ ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 8, heigh
 ```
 
 
-
 ```{r}
-#### Calculate Bray-Curtis dissimilarity matrix
+
+library(tibble)
+
+# Retry transforming data to wide format
 wide_data <- tidy_data %>%
   select(SampleID, Genus, Abundance) %>%
-  pivot_wider(names_from = Genus, 
-              values_from = Abundance,
-              values_fill = 0)
+  pivot_wider(names_from = Genus, values_from = Abundance, values_fill = 0) %>%
+  column_to_rownames(var = "SampleID")
 
-# Add metadata
-wide_data <- merge(wide_data, 
-                  unique(tidy_data[, c("SampleID", "Individual", "Season")]), 
-                  by = "SampleID")
-genus_cols <- colnames(wide_data)[!colnames(wide_data) %in% c("SampleID", "Individual", "Season")]
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
 
-bray_curtis_matrix <- vegdist(wide_data[, genus_cols], method = "bray")
+# Convert to regular matrix and display first few rows/columns
+bc_matrix <- as.matrix(bray_curtis_matrix)
 
-bray_curtis_matrix_df <- as.data.frame(as.matrix(bray_curtis_matrix))
-write.csv(bray_curtis_matrix_df, "bray_curtis_dissimilarity_matrix.csv")
+# Save the full matrix to a file
+# write.csv(as.matrix(bray_curtis_matrix), "bray_curtis_matrix.csv")
+
 ```
 
+
+
 ```{r}
+
+
 # Perform PCoA using the Bray-Curtis dissimilarity matrix
-pcoa_result <- cmdscale(bray_curtis_matrix, eig = TRUE, k = 2)
+# bray_curtis_matrix <- bray_curtis_matrix[,-1]
+pcoa_result <- cmdscale(bc_matrix, eig = TRUE, k = 2)
 
 # Create a dataframe for plotting
 pcoa_df <- data.frame(
   PCoA1 = pcoa_result$points[,1],
   PCoA2 = pcoa_result$points[,2],
-  Season = wide_data$Season,
-  Individual = wide_data$Individual
+  Season = metadata$Season,
+  Individual = metadata$Individual
 )
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+
+# Calculate variance explained
+variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+
+# Merge with metadata
+pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
 
 # Plot PCoA results by Season
 p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
@@ -285,18 +341,138 @@ ggsave("PCoA of Gut Microbiome Composition by Individual.jpg", plot = p2, width 
 
 ```
 
+
+```{r}
+
+# Correct the order of months starting from October
+month_levels <- c("October", "November", "December", "January", "February", "March", "April", "May", "June", "July", "August", "September")
+
+# Ensure Month is a factor with the correct levels
+pcoa_data$Month <- factor(pcoa_data$Month, levels = month_levels)
+
+# Recreate the plot with simplified months
+p_temporal_clean <- ggplot(pcoa_data, aes(x=Month, y=PCo1, color=Individual, group=Individual)) +
+  geom_line(linewidth=1, alpha=0.7) +
+  geom_point(size=3) +
+  theme_bw() +
+  labs(x="", 
+       y="PCo1",
+       title="Temporal Changes in Gut Microbiome Composition") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.spacing = unit(2, "lines"),
+        strip.background = element_rect(fill="white"),
+        strip.text = element_text(size=12)) +
+  facet_wrap(~Individual, scales="free_y", ncol=2)
+
+# Print the plot
+print(p_temporal_clean)
+
+# Calculate monthly statistics for each individual
+monthly_stats <- aggregate(PCo1 ~ Month + Individual, data=pcoa_data,
+                         FUN=function(x) c(mean=mean(x), sd=sd(x), n=length(x)))
+
+# Convert the results to a more readable format
+monthly_stats_df <- data.frame(
+  Month = monthly_stats$Month,
+  Individual = monthly_stats$Individual,
+  Mean_PCo1 = monthly_stats$PCo1[,1],
+  SD_PCo1 = monthly_stats$PCo1[,2],
+  N_samples = monthly_stats$PCo1[,3]
+)
+
+print("Monthly statistics by individual:")
+print(monthly_stats_df)
+
+# Save the plot
+
+
+
+ggsave("Temporal_changes_genus_monthly.pdf", plot = p_temporal_clean, width = 8, height = 12)
+
+
+```
+```{r}
+cat("## Analysis of Temporal Dynamics\n")
+cat("Most individuals show distinct shifts between seasons\n
+The largest changes appear to occur between winter (January-February) and spring (March-April) months.\n
+grouped data by individual and time, then viz changes in Bray-Curtis distances or PCoA coordinates over time\n\n"
+)
+
+cat("Isa shows the most dramatic fluctuations across months\n
+Jupiler maintains relatively more stable composition across the year\n
+Maia has fewer samples but shows similar patterns to others")
+```
+
+
+
+
+```{r}
+set.seed(123) # for reproducibility
+
+# Run PERMANOVA for each factor
+permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata, permutations = 999)
+permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata, permutations = 999)
+permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata, permutations = 999)
+
+# Print results
+print("PERMANOVA results for Season:")
+print(permanova_season)
+print("\
+PERMANOVA results for Sex:")
+print(permanova_sex)
+print("\
+PERMANOVA results for Individual:")
+print(permanova_individual)
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+    Factor = c("Season", "Individual", "Sex"),
+    R2 = c(0.03139 , 0.13165, 0.04976),
+    P_value = c(0.154, 0.005, 0.002)
+)
+
+# Create a bar plot using ggplot2
+library(ggplot2)
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P_value < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P_value)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+
+```
+
 ```{r}
 #PERMANOVA
 
 # Extract R-squared values for Season and Individual
-
+set.seed(123)
 season_r2 <- adonis2(bray_curtis_matrix ~ Season, data = metadata, permutations = 999)$R2[1]
 individual_r2 <- adonis2(bray_curtis_matrix ~ Individual, data = metadata,  permutations = 999)$R2[1]
+sex_r2 <- adonis2(bray_curtis_matrix ~ Sex, data = metadata,  permutations = 999)$R2[1]
+
+
+
 
 # Create a comparison data frame
 comparison_df <- data.frame(
-  Variable = c("Season", "Individual"),
-  R2 = c(season_r2, individual_r2)
+  Variable = c("Season", "Individual", "Sex"),
+  R2 = c(season_r2, individual_r2, sex_r2)
 )
 
 
@@ -306,7 +482,7 @@ p1 <-
   geom_bar(stat = "identity", width = 0.6) +
   theme_minimal() +
   labs(
-    title = "Comparison of Variance Explained: Individual vs Season",
+    title = "Comparison of Variance Explained",
     y = "R-squared (proportion of variance explained)",
     x = ""
   ) +
@@ -325,6 +501,10 @@ ggsave("PERMANOVA.jpg", plot = p1, width = 6, height = 4, dpi = 300)
 ```
 
 ```{r}
+###let's explore core genera for each individual, present in at least 50% of samples
+
+
+
 
 ```
 
