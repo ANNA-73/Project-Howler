@@ -1,4 +1,4 @@
----
+# ---
 title: "R Notebook"
 output: html_notebook
 ---
@@ -34,8 +34,7 @@ metadata <- read.csv("howlermeta.csv", sep = ',')
 ```{r}
 ### this one works
 
-
-
+setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
 
 taxa_table <- read.table("t_taxa.txt",
                            header           = TRUE,
