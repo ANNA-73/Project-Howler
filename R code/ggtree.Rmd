@@ -1,0 +1,32 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(ggtree)
+
+```
+```{r}
+mytree <- read.tree("C://Users/Owner/Desktop/Project-Howler/input/tre/prevotella/RAxML_result.input_references_refined.tre")
+
+mytree
+
+
+```
+
+
+
+```{r}
+# plot basic
+ggtree(mytree)
+
+# add labels
+ggtree(mytree, layout = "circular") + geom_tiplab() + geom_nodelab()
+
+```
+```{r}
+
+
+```
+
