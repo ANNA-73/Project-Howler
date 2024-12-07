@@ -1,0 +1,214 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+
+```
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
+genus <- read.table("mock_genus_v3.txt" , header = TRUE , sep = '\t')
+genus
+```
+
+```{r}
+### to normalize the data 
+
+#relative abundances
+
+# Store genus names
+genus_names <- genus[,1]
+
+# Convert the numerical data to matrix for normalization
+numerical_data <- as.matrix(genus[,-1])  # exclude first column but keep it stored
+
+# Normalize
+normalized_data <- sweep(numerical_data, 2, colSums(numerical_data), '/')
+normalized_data <- normalized_data * 100
+
+# Create final dataframe with genus names
+final_genus <- data.frame(Genus=genus_names, normalized_data)
+colnames(final_genus) <- gsub("\\.", "-", colnames(final_genus))
+write.table(final_genus , "mock_final_genus.txt", sep = "\t" , row.names = FALSE, quote = FALSE)
+
+final_genus
+
+```
+```{r}
+genus_data <- read.table("mock_final_genus.txt" , header = TRUE , sep = '\t')
+colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
+
+setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+genus_data
+metadata
+```
+
+```{r}
+
+##clean and merge
+
+
+genus_long <- genus_data %>%
+  pivot_longer(cols = -Genus, names_to = "SampleID", values_to = "Abundance")
+genus_long
+
+# Merge with metadata
+tidy_data <- merge(genus_long, metadata, by="SampleID")
+
+
+tidy_data
+
+```
+
+```{r}
+
+tidy_data <- tidy_data %>%
+  group_by(SampleID) %>%
+  mutate(Total_Abundance = sum(as.numeric(Abundance), na.rm = TRUE),
+         Relative_Abundance = as.numeric(Abundance) / Total_Abundance) %>%
+  ungroup()
+
+# Display the updated data with relative abundance
+print(head(tidy_data))
+
+```
+
+```{r}
+#### overall abundance patherns
+
+
+# Calculate mean abundance per genus across all samples
+mean_abundance <- tidy_data %>%
+  group_by(Genus) %>%
+  summarize(mean_abundance = mean(Abundance)) %>%
+  arrange(desc(mean_abundance)) %>%
+  head(10)  # Top 10 most abundant genera
+
+# Create a bar plot of top 10 most abundant genera
+p1 <- ggplot(mean_abundance, aes(x = reorder(Genus, mean_abundance), y = mean_abundance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 Most Abundant Genera",
+       x = "Genus",
+       y = "Mean Relative Abundance (%)")
+
+# Calculate abundance patterns across seasons for top 5 genera
+top5_genera <- mean_abundance$Genus[1:5]
+seasonal_patterns <- tidy_data %>%
+  filter(Genus %in% top5_genera) %>%
+  group_by(Season, Genus) %>%
+  summarize(mean_abundance = mean(Abundance),
+            se = sd(Abundance)/sqrt(n())) %>%
+  ungroup()
+
+# Create a faceted box plot for seasonal patterns
+p2 <- 
+  ggplot(tidy_data %>% filter(Genus %in% top5_genera), 
+       aes(x = Season, y = Abundance, fill = Season)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  facet_wrap(~Genus, scales = "free_y") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Seasonal Distribution of Top 5 Most Abundant Genera",
+       y = "Relative Abundance (%)")
+
+# Print summary statistics
+print("Summary of top 5 genera abundance by season:")
+seasonal_summary <- tidy_data %>%
+  filter(Genus %in% top5_genera) %>%
+  group_by(Season, Genus) %>%
+  summarize(
+    mean_abundance = mean(Abundance),
+    sd_abundance = sd(Abundance),
+    median_abundance = median(Abundance)
+  )
+
+p1
+p2
+```
+
+
+```{r}
+# First transform the data to wide format properly
+wide_data <- tidy_data %>%
+  select(SampleID, Genus, Abundance) %>%
+  pivot_wider(names_from = Genus, values_from = Abundance) %>%
+  column_to_rownames("SampleID")
+
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
+
+# Make sure metadata matches the sample order
+metadata_ordered <- metadata[match(rownames(wide_data), metadata$SampleID),]
+
+# Now run PERMANOVA
+permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata_ordered, permutations = 999)
+permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata_ordered, permutations = 999)
+permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata_ordered, permutations = 999)
+
+# Print results
+print("PERMANOVA results for Season:")
+print(permanova_season)
+print("\
+PERMANOVA results for Sex:")
+print(permanova_sex)
+print("\
+PERMANOVA results for Individual:")
+print(permanova_individual)
+
+# Extract R-squared values and p-values
+r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1])
+p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1])
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+  Factor = c("Season", "Individual", "Sex"),
+  R2 = r2_values,
+  P_value = p_values
+)
+print(permanova_results)
+
+# Create a bar plot using ggplot2
+library(ggplot2)
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P_value < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P_value)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+# ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+```
+
+
+
+```
+
