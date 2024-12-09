@@ -20,20 +20,27 @@ library(hrbrthemes)
 ```
 
 ```{r}
-setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
-genus_data <- read.table("new-filtered_genus.txt" , header = TRUE , sep = '\t')
-colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
-genus_data
-metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+setwd("C:/Users/Owner/Desktop/Project-Howler/humaan")
+path_data <- read.table("pathabundance-cmp.tsv" , header = TRUE , sep = '\t')
+
+path_data <- path_data[!grepl("UNINTEGRATED", path_data$Pathway), ]
+path_data <- path_data[!grepl("UNMAPPED", path_data$Pathway), ]
+colnames(path_data) <- gsub("\\.", "-", colnames(path_data))
+path_data
+
+metadata <- read.csv("howlermeta.csv")  
+
+metadata
+
 ```
 
 ```{r}
-genus_long <- genus_data %>%
-  pivot_longer(cols = -clade, names_to = "SampleID", values_to = "Abundance")
-genus_long
+path_long <- path_data %>%
+  pivot_longer(cols = -Pathway, names_to = "SampleID", values_to = "Abundance")
 
+path_long$SampleID <- gsub("_Abundance", "", path_long$SampleID)
 # Merge with metadata
-tidy_data <- merge(genus_long, metadata, by="SampleID")
+tidy_data <- merge(path_long, metadata, by="SampleID")
 
 
 tidy_data
@@ -56,8 +63,8 @@ print(head(tidy_data))
 ```{r}
 # First transform the data to wide format properly
 wide_data <- tidy_data %>%
-  select(SampleID, clade, Abundance) %>%
-  pivot_wider(names_from = clade, values_from = Abundance , values_fill = 0) %>%
+  select(SampleID, Pathway, Abundance) %>%
+  pivot_wider(names_from = Pathway, values_from = Abundance , values_fill = 0) %>%
   column_to_rownames("SampleID")
 
 # Calculate Bray-Curtis dissimilarity matrix
@@ -111,7 +118,7 @@ p = %.3f", R2, P_value)),
     ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
 
 # Save the plot
-# ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+ggsave("humaan_permanova_results.png", p, width = 10, height = 6, dpi = 300)
 
 # Display the plot
 print(p)
@@ -119,27 +126,24 @@ print(p)
 ```
 
 ```{r}
-#### overall abundance patherns
-
-
 # Calculate mean abundance per genus across all samples
 mean_abundance <- tidy_data %>%
-  group_by(clade) %>%
-  summarize(mean_abundance = mean(Abundance)) %>%
+  group_by(Pathway) %>%
+  summarize(mean_abundance = mean(Relative_Abundance)) %>%
   arrange(desc(mean_abundance)) %>%
   head(10)  # Top 10 most abundant genera
 
 # Calculate abundance patterns across seasons for top 5 genera
-top5_genera <- mean_abundance$clade[1:5]
+top5_genera <- mean_abundance$Pathway[1:5]
 seasonal_patterns <- tidy_data %>%
-  filter(clade %in% top5_genera) %>%
-  group_by(Season, clade) %>%
-  summarize(mean_abundance = mean(Abundance),
-            se = sd(Abundance)/sqrt(n())) %>%
+  filter(Pathway %in% top5_genera) %>%
+  group_by(Season, Pathway) %>%
+  summarize(mean_abundance = mean(Relative_Abundance),
+            se = sd(Relative_Abundance) / sqrt(n())) %>%
   ungroup()
 
 # Create a bar plot of top 10 most abundant genera
-p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_abundance)) +
+p1 <- ggplot(mean_abundance, aes(x = reorder(Pathway, mean_abundance), y = mean_abundance)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   coord_flip() +
   theme_minimal() +
@@ -148,30 +152,31 @@ p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_ab
        y = "Mean Relative Abundance (%)")
 
 # Create a faceted box plot for seasonal patterns
-p2 <- ggplot(tidy_data %>% filter(clade %in% top5_genera), 
-             aes(x = Season, y = Abundance, fill = Season)) +
+p2 <- ggplot(tidy_data %>% filter(Pathway %in% top5_genera), 
+             aes(x = Season, y = Relative_Abundance, fill = Season)) +
   geom_boxplot() +
   scale_fill_brewer(palette = "Dark2") +
-  facet_wrap(~clade, scales = "free_y") +
+  facet_wrap(~Pathway, scales = "free_y") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   labs(title = "Seasonal Distribution of Top 5 Most Abundant Genera",
        y = "Relative Abundance (%)")
 
-
- # Print summary statistics
+# Print summary statistics
 print("Summary of top 5 genera abundance by season:")
 seasonal_summary <- tidy_data %>%
-  filter(clade %in% top5_genera) %>%
-  group_by(Season, clade) %>%
+  filter(Pathway %in% top5_genera) %>%
+  group_by(Season, Pathway) %>%
   summarize(
-    mean_abundance = mean(Abundance),
-    sd_abundance = sd(Abundance),
-    median_abundance = median(Abundance)
+    mean_abundance = mean(Relative_Abundance),
+    sd_abundance = sd(Relative_Abundance),
+    median_abundance = median(Relative_Abundance),
+    .groups = 'drop'  # Override the default grouping behavior
   )
 
-p1
-p2
+# Display the plots
+print(p1)
+print(p2)
 # ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
 # ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
 
@@ -180,7 +185,7 @@ p2
 #####core genera cal
 # Calculate presence/absence for each genus per individual
 core_genera <- tidy_data %>%
-  group_by(Individual, clade) %>%
+  group_by(Individual, Pathway) %>%
   summarize(
     Prevalence = n_distinct(SampleID[Relative_Abundance > 0]) / n_distinct(SampleID) * 100,
     Mean_Abundance = mean(Relative_Abundance, na.rm = TRUE),
@@ -201,7 +206,7 @@ print(head(core_genera_filtered))
 
 ```{r}
 p1 <- ggplot(core_genera_filtered, 
-       aes(x = reorder(clade, Mean_Abundance), 
+       aes(x = reorder(Pathway, Mean_Abundance), 
            y = Mean_Abundance, 
            fill = Individual)) +
   geom_bar(stat = "identity", position = "dodge") +
@@ -230,7 +235,7 @@ p1 <- ggplot(core_genera_filtered,
 
 # 2. Heatmap of prevalence
 p2 <- ggplot(core_genera_filtered, 
-       aes(x = reorder(clade, -Prevalence), 
+       aes(x = reorder(Pathway, -Prevalence), 
            y = Individual, 
            fill = Prevalence)) +
   geom_tile() +
@@ -256,15 +261,15 @@ p2 <- ggplot(core_genera_filtered,
 print(p1)
 print(p2)
 # Save plots with high resolution
-ggsave("core_genera_abundance.pdf", p1, width = 12, height = 8, dpi = 300)
-ggsave("core_genera_prevalence.pdf", p2, width = 12, height = 8, dpi = 300)
+# ggsave("core_genera_abundance.pdf", p1, width = 12, height = 8, dpi = 300)
+# ggsave("core_genera_prevalence.pdf", p2, width = 12, height = 8, dpi = 300)
 
 ```
 ```{r}
 # First, let's create the Bubble Plot
 p3 <- ggplot(core_genera_filtered, 
        aes(x = Individual, 
-           y = reorder(clade, Mean_Abundance),
+           y = reorder(Pathway, Mean_Abundance),
            size = Mean_Abundance,
            color = Prevalence)) +
   geom_point(alpha = 0.7) +
@@ -291,8 +296,8 @@ p3 <- ggplot(core_genera_filtered,
 
 # Now create the Violin Plot with Jittered Points
 p4 <- ggplot(tidy_data %>% 
-               inner_join(core_genera_filtered %>% select(Individual, clade)), 
-       aes(x = reorder(clade, Relative_Abundance), 
+               inner_join(core_genera_filtered %>% select(Individual, Pathway)), 
+       aes(x = reorder(Pathway, Relative_Abundance), 
            y = Relative_Abundance)) +
   geom_violin(aes(fill = Individual), alpha = 0.6) +
   geom_jitter(aes(color = Individual), 
@@ -325,8 +330,8 @@ print(p3)
 print(p4)
 
 # Save the plots as high-resolution PDFs
-ggsave("bubble_plot_core_genera.pdf", p3, width = 12, height = 8, dpi = 300)
-ggsave("violin_plot_core_genera.pdf", p4, width = 12, height = 8, dpi = 300)
+# ggsave("bubble_plot_core_genera.pdf", p3, width = 12, height = 8, dpi = 300)
+# ggsave("violin_plot_core_genera.pdf", p4, width = 12, height = 8, dpi = 300)
 
 # Print summary statistics
 summary_stats <- core_genera_filtered %>%
@@ -387,14 +392,14 @@ ggsave("faceted_boxplot_core_genera.pdf", p4_boxplot, width = 15, height = 8, dp
 
 ```{r}
 # Filter for top 10 genera
-top10_genera <- mean_abundance$clade[1:10]
+top10_genera <- mean_abundance$Pathway[1:10]
 filtered_data <- tidy_data %>%
-  filter(clade %in% top10_genera)
-
+  filter(Pathway %in% top10_genera)
+top10_genera
 # Create a pivot table for the heatmap
 heatmap_data <- filtered_data %>%
-  select(SampleID, clade, Abundance) %>%
-  spread(key = clade, value = Abundance, fill = 0) %>%
+  select(SampleID, Pathway, Abundance) %>%
+  spread(key = Pathway, value = Abundance, fill = 0) %>%
   column_to_rownames(var = "SampleID")
 
 # Replace NA values with 0
@@ -436,10 +441,10 @@ p1 <- pheatmap(
   cluster_cols = TRUE,
   show_rownames = TRUE,
   show_colnames = TRUE,
-  main = "Heatmap of Top 10 Most Abundant Genera"
+  main = "Heatmap of Top 10 Most Abundant PW"
 )
 p1
-ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 10, height = 8, dpi = 300)
+ggsave("Heatmap of Top 10 Most Abundant PW.jpg", plot = p1, width = 10, height = 8, dpi = 300)
 
 ```
 ```{r}
@@ -515,34 +520,32 @@ pcoa_data$PCo1_diff <- ave(pcoa_data$PCo1, pcoa_data$Individual,
 
 # View the resulting dataframe
 print(head(pcoa_data))
-write.table(pcoa_data , "pcoa_data_genus.csv", sep=",", row.names = TRUE,
-            col.names = TRUE)
+# write.table(pcoa_data , "pcoa_data_genus.csv", sep=",", row.names = TRUE, col.names = TRUE)
 
 ```
 
 ```{r}
 ##we have multiple samples for each month, lets get mean pco1 for each
-aggregated_data <- pcoa_data %>%
+agg_data_pw <- pcoa_data %>%
   group_by(Individual, Month) %>%
   summarise(PCo1 = mean(PCo1, na.rm = TRUE)) %>%
   arrange(Individual, Month)
 
 # Calculate PCo1_diff as the absolute difference between consecutive months
-aggregated_data <- aggregated_data %>%
+agg_data_pw <- agg_data_pw %>%
   group_by(Individual) %>%
   mutate(PCo1_diff = c(0, abs(diff(PCo1))))
 
-head(aggregated_data, 15)
-write.table(aggregated_data , "aggregated_pco1_data.csv", sep=",", row.names = TRUE,
-            col.names = TRUE)
+head(agg_data_pw, 15)
+# write.table(aggregated_data , "aggregated_pco1_data.csv", sep=",", row.names = TRUE, col.names = TRUE)
 
 ```
 
 
 ```{r}
 # Adjust y-axis scale to a maximum of 0.8
-temporal_p <-
-  ggplot(aggregated_data, aes(x = Month, y = PCo1_diff, group = Individual, color = Individual)) +
+temporal_p_pw <-
+  ggplot(agg_data_pw, aes(x = Month, y = PCo1_diff, group = Individual, color = Individual)) +
   geom_line(linewidth = 1) +
   geom_point(size = 2) +
   facet_wrap(~ Individual, scales = "fixed") +
@@ -555,43 +558,10 @@ temporal_p <-
        title = "Temporal Changes in Microbiome Composition"
        ) +
   scale_y_continuous(limits = c(0, 0.8))
-temporal_p
+temporal_p_pw
+  
 
 
-ggsave("Temporal_mean_magnitude_genus.jpg", plot = temporal_p, width = 10, height = 8, dpi = 300)
+ggsave("Temporal_mean_magnitude_PW.jpg", plot = temporal_p_pw, width = 10, height = 8, dpi = 300)
 ```
-```{r}
-
-# Add a column to distinguish datasets
-agg_data_pw$Dataset <- "PW"
-aggregated_data$Dataset <- "Genus"
-
-# Combine the datasets
-combined_data <- rbind(agg_data_pw, aggregated_data)
-
-# Plot both datasets together
-temporal_combined <- ggplot(combined_data, aes(x = Month, y = PCo1_diff, group = interaction(Individual, Dataset), color = Dataset)) +
-  geom_line(aes(linetype = Dataset), linewidth = 1) +
-  geom_point(size = 2) +
-  facet_wrap(~ Individual, scales = "fixed") +
-  theme_minimal() +
-  theme(legend.position = "bottom",
-        strip.text = element_text(size = 10, face = "bold"),
-        axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(x = "Month",
-       y = "Magnitude of Change (PCo1_diff)",
-       title = "Temporal Changes in Microbiome Composition and function",
-       color = "Dataset",
-       linetype = "Dataset") +
-  scale_y_continuous(limits = c(0, 0.8))
-
-# Display the plot
-print(temporal_combined)
-
-# Save the plot
-ggsave("Temporal_mean_magnitude_combined.jpg", plot = temporal_combined, width = 12, height = 8, dpi = 300)
-
-
-```
-
 
