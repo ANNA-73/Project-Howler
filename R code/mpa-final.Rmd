@@ -1,0 +1,563 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+library(ggridges)
+library(hrbrthemes)
+```
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
+genus_data <- read.table("new-filtered_genus.txt" , header = TRUE , sep = '\t')
+colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
+genus_data
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+```
+
+```{r}
+genus_long <- genus_data %>%
+  pivot_longer(cols = -clade, names_to = "SampleID", values_to = "Abundance")
+genus_long
+
+# Merge with metadata
+tidy_data <- merge(genus_long, metadata, by="SampleID")
+
+
+tidy_data
+
+```
+
+```{r}
+tidy_data <- tidy_data %>%
+  group_by(SampleID) %>%
+  mutate(Total_Abundance = sum(as.numeric(Abundance), na.rm = TRUE),
+         Relative_Abundance = as.numeric(Abundance) / Total_Abundance) %>%
+  ungroup()
+
+# Display the updated data with relative abundance
+print(head(tidy_data))
+
+
+```
+
+```{r}
+# First transform the data to wide format properly
+wide_data <- tidy_data %>%
+  select(SampleID, clade, Abundance) %>%
+  pivot_wider(names_from = clade, values_from = Abundance , values_fill = 0) %>%
+  column_to_rownames("SampleID")
+
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
+
+# Make sure metadata matches the sample order
+metadata_ordered <- metadata[match(rownames(wide_data), metadata$SampleID),]
+
+# Now run PERMANOVA
+permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+
+# Print results
+print("PERMANOVA results for Season:")
+print(permanova_season)
+print("\
+PERMANOVA results for Sex:")
+print(permanova_sex)
+print("\
+PERMANOVA results for Individual:")
+print(permanova_individual)
+
+# Extract R-squared values and p-values
+r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1])
+p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1])
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+  Factor = c("Season", "Individual", "Sex"),
+  R2 = r2_values,
+  P_value = p_values
+)
+print(permanova_results)
+
+# Create a bar plot using ggplot2
+library(ggplot2)
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P_value < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P_value)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+# ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+
+```
+
+```{r}
+#### overall abundance patherns
+
+
+# Calculate mean abundance per genus across all samples
+mean_abundance <- tidy_data %>%
+  group_by(clade) %>%
+  summarize(mean_abundance = mean(Abundance)) %>%
+  arrange(desc(mean_abundance)) %>%
+  head(10)  # Top 10 most abundant genera
+
+# Calculate abundance patterns across seasons for top 5 genera
+top5_genera <- mean_abundance$clade[1:5]
+seasonal_patterns <- tidy_data %>%
+  filter(clade %in% top5_genera) %>%
+  group_by(Season, clade) %>%
+  summarize(mean_abundance = mean(Abundance),
+            se = sd(Abundance)/sqrt(n())) %>%
+  ungroup()
+
+# Create a bar plot of top 10 most abundant genera
+p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_abundance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 10 Most Abundant Genera",
+       x = "Genus",
+       y = "Mean Relative Abundance (%)")
+
+# Create a faceted box plot for seasonal patterns
+p2 <- ggplot(tidy_data %>% filter(clade %in% top5_genera), 
+             aes(x = Season, y = Abundance, fill = Season)) +
+  geom_boxplot() +
+  scale_fill_brewer(palette = "Dark2") +
+  facet_wrap(~clade, scales = "free_y") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Seasonal Distribution of Top 5 Most Abundant Genera",
+       y = "Relative Abundance (%)")
+
+
+ # Print summary statistics
+print("Summary of top 5 genera abundance by season:")
+seasonal_summary <- tidy_data %>%
+  filter(clade %in% top5_genera) %>%
+  group_by(Season, clade) %>%
+  summarize(
+    mean_abundance = mean(Abundance),
+    sd_abundance = sd(Abundance),
+    median_abundance = median(Abundance)
+  )
+
+p1
+p2
+# ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
+# ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
+
+```
+```{r}
+#####core genera cal
+# Calculate presence/absence for each genus per individual
+core_genera <- tidy_data %>%
+  group_by(Individual, clade) %>%
+  summarize(
+    Prevalence = n_distinct(SampleID[Relative_Abundance > 0]) / n_distinct(SampleID) * 100,
+    Mean_Abundance = mean(Relative_Abundance, na.rm = TRUE),
+    SD_Abundance = sd(Relative_Abundance, na.rm = TRUE)
+  ) %>%
+  ungroup()
+
+# Filter for core genera (present in >50% of samples)
+core_genera_filtered <- core_genera %>%
+  filter(Prevalence >= 50) %>%
+  arrange(Individual, desc(Mean_Abundance))
+
+# Print the first few rows to check
+print("Core genera summary:")
+print(head(core_genera_filtered))
+
+```
+
+```{r}
+p1 <- ggplot(core_genera_filtered, 
+       aes(x = reorder(clade, Mean_Abundance), 
+           y = Mean_Abundance, 
+           fill = Individual)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_errorbar(aes(ymin = Mean_Abundance - SD_Abundance,
+                    ymax = Mean_Abundance + SD_Abundance),
+                position = position_dodge(width = 0.9),
+                width = 0.25) +
+  scale_fill_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  ) +
+  labs(
+    title = "Core Genera Across Individuals",
+    x = "Genus",
+    y = "Mean Relative Abundance (%)",
+    fill = "Individual"
+  )
+
+# 2. Heatmap of prevalence
+p2 <- ggplot(core_genera_filtered, 
+       aes(x = reorder(clade, -Prevalence), 
+           y = Individual, 
+           fill = Prevalence)) +
+  geom_tile() +
+  scale_fill_viridis() +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid = element_blank(),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  ) +
+  labs(
+    title = "Prevalence of Core Genera",
+    x = "Genus",
+    y = "Individual",
+    fill = "Prevalence (%)"
+  )
+
+# Print plots
+print(p1)
+print(p2)
+# Save plots with high resolution
+ggsave("core_genera_abundance.pdf", p1, width = 12, height = 8, dpi = 300)
+ggsave("core_genera_prevalence.pdf", p2, width = 12, height = 8, dpi = 300)
+
+```
+```{r}
+# First, let's create the Bubble Plot
+p3 <- ggplot(core_genera_filtered, 
+       aes(x = Individual, 
+           y = reorder(clade, Mean_Abundance),
+           size = Mean_Abundance,
+           color = Prevalence)) +
+  geom_point(alpha = 0.7) +
+  scale_size_continuous(range = c(2, 12)) +
+  scale_color_viridis() +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  ) +
+  labs(
+    title = "Core Genera: Abundance and Prevalence",
+    x = "Individual",
+    y = "Genus",
+    size = "Mean Abundance (%)",
+    color = "Prevalence (%)"
+  )
+
+# Now create the Violin Plot with Jittered Points
+p4 <- ggplot(tidy_data %>% 
+               inner_join(core_genera_filtered %>% select(Individual, clade)), 
+       aes(x = reorder(clade, Relative_Abundance), 
+           y = Relative_Abundance)) +
+  geom_violin(aes(fill = Individual), alpha = 0.6) +
+  geom_jitter(aes(color = Individual), 
+              width = 0.2, 
+              size = 1, 
+              alpha = 0.6) +
+  scale_fill_viridis(discrete = TRUE) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5)
+  ) +
+  labs(
+    title = "Distribution of Core Genera Abundance",
+    x = "Genus",
+    y = "Relative Abundance (%)",
+    fill = "Individual",
+    color = "Individual"
+  )
+
+# Print both plots
+print(p3)
+print(p4)
+
+# Save the plots as high-resolution PDFs
+ggsave("bubble_plot_core_genera.pdf", p3, width = 12, height = 8, dpi = 300)
+ggsave("violin_plot_core_genera.pdf", p4, width = 12, height = 8, dpi = 300)
+
+# Print summary statistics
+summary_stats <- core_genera_filtered %>%
+  group_by(Individual) %>%
+  summarize(
+    Number_of_Core_Genera = n(),
+    Mean_Prevalence = mean(Prevalence),
+    Mean_Abundance = mean(Mean_Abundance)
+  )
+
+print("\
+Summary statistics by individual:")
+print(summary_stats)
+
+
+```
+
+```{r}
+# Create faceted boxplots with jittered points for each individual
+p4_boxplot <- ggplot(tidy_data %>% 
+                       inner_join(core_genera_filtered %>% select(Individual, clade)), 
+       aes(x = clade, y = Relative_Abundance)) +
+  geom_boxplot(aes(fill = Individual), alpha = 0.6, outlier.shape = NA) +
+  geom_jitter(aes(color = Individual), 
+              width = 0.2, 
+              size = 2, 
+              alpha = 0.6) +
+  scale_fill_viridis(discrete = TRUE) +
+  scale_color_viridis(discrete = TRUE) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10),
+    axis.title = element_text(size = 12, face = "bold"),
+    legend.title = element_text(size = 12, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90"),
+    panel.grid.minor = element_blank(),
+    plot.title = element_text(size = 14, face = "bold", hjust = 0.5),
+    strip.text = element_text(size = 12, face = "bold")
+  ) +
+  labs(
+    title = "Boxplots of Core Genera Abundance by Individual",
+    x = "Genus",
+    y = "Relative Abundance (%)",
+    fill = "Individual",
+    color = "Individual"
+  ) +
+  facet_wrap(~ Individual, scales = "free_x", ncol = 3)
+
+# Print the faceted boxplot
+print(p4_boxplot)
+
+# Save the faceted boxplot as a high-resolution PDF
+ggsave("faceted_boxplot_core_genera.pdf", p4_boxplot, width = 15, height = 8, dpi = 300)
+
+```
+
+```{r}
+# Filter for top 10 genera
+top10_genera <- mean_abundance$clade[1:10]
+filtered_data <- tidy_data %>%
+  filter(clade %in% top10_genera)
+
+# Create a pivot table for the heatmap
+heatmap_data <- filtered_data %>%
+  select(SampleID, clade, Abundance) %>%
+  spread(key = clade, value = Abundance, fill = 0) %>%
+  column_to_rownames(var = "SampleID")
+
+# Replace NA values with 0
+heatmap_data[is.na(heatmap_data)] <- 0
+
+# Transpose the heatmap data
+heatmap_data <- t(heatmap_data)
+
+setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
+# Load metadata for annotations
+metadata <- read.csv("howlermeta.csv")
+
+# Ensure metadata columns match the SampleID in heatmap_data
+metadata <- metadata %>%
+  filter(SampleID %in% colnames(heatmap_data))
+
+# Prepare annotation data
+annotation_data <- metadata %>%
+  select(SampleID, Season, Individual) %>%
+  column_to_rownames(var = "SampleID")
+
+# Convert Season and Individual to factors
+annotation_data$Season <- as.factor(annotation_data$Season)
+annotation_data$Individual <- as.factor(annotation_data$Individual)
+
+annotation_colors <- list(
+  Season = c("Dry" = "brown", "Intermediate" = "yellow", "Rain" = "blue"),
+  Individual = c("Dos" = "red", "Hugo" = "purple", "Isa" = "brown", "Jupiler" = "pink", "Melanie" = "orange", "Maia" = "green", "Uno" = "cyan")
+)
+
+# Create the heatmap with annotations
+p1 <- pheatmap(
+  heatmap_data,
+  annotation_col = annotation_data,  # Use annotation_col for x-axis annotations
+  annotation_colors = annotation_colors,
+  color = viridis::magma(10),  # Ensure the color palette is correctly specified
+  border_color = "black",
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  show_rownames = TRUE,
+  show_colnames = TRUE,
+  main = "Heatmap of Top 10 Most Abundant Genera"
+)
+p1
+ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 10, height = 8, dpi = 300)
+
+```
+```{r}
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
+
+# Convert to regular matrix and display first few rows/columns
+bc_matrix <- as.matrix(bray_curtis_matrix)
+
+```
+```{r}
+pcoa_result <- cmdscale(bc_matrix, eig = TRUE, k = 2)
+
+# Create a dataframe for plotting
+pcoa_df <- data.frame(
+  PCoA1 = pcoa_result$points[,1],
+  PCoA2 = pcoa_result$points[,2],
+  Season = metadata$Season,
+  Individual = metadata$Individual
+)
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+
+# Calculate variance explained
+variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+
+# Merge with metadata
+pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
+
+# Plot PCoA results by Season
+p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome Composition by Season",
+    x = "PCoA1",
+    y = "PCoA2"
+  ) +
+  stat_ellipse(level = 0.95)
+
+# Plot PCoA results by Individual
+p2 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Individual)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome Composition by Individual",
+    x = "PCoA1",
+    y = "PCoA2"
+  )
+
+# Print plots
+print(p1)
+print(p2)
+```
+```{r}
+# Ensure Month is a factor with the correct chronological order
+month_levels <- c("October", "November", "December", "January", "February", "March", 
+                  "April", "May", "June", "July", "August", "September")
+metadata$Month <- factor(metadata$Month, levels = month_levels)
+
+# Merge PCoA results with metadata
+pcoa_data <- merge(pcoa_points, metadata, by = "SampleID")
+
+# Sort the data by Individual and Month
+pcoa_data <- pcoa_data[order(pcoa_data$Individual, pcoa_data$Month), ]
+
+# Calculate the absolute change in PCo1 for each individual across months and replace NA with 0
+pcoa_data$PCo1_diff <- ave(pcoa_data$PCo1, pcoa_data$Individual, 
+                           FUN = function(x) c(0, abs(diff(x))))
+
+# View the resulting dataframe
+print(head(pcoa_data))
+write.table(pcoa_data , "pcoa_data_genus.csv", sep=",", row.names = TRUE,
+            col.names = TRUE)
+
+```
+
+```{r}
+##we have multiple samples for each month, lets get mean pco1 for each
+aggregated_data <- pcoa_data %>%
+  group_by(Individual, Month) %>%
+  summarise(PCo1 = mean(PCo1, na.rm = TRUE)) %>%
+  arrange(Individual, Month)
+
+# Calculate PCo1_diff as the absolute difference between consecutive months
+aggregated_data <- aggregated_data %>%
+  group_by(Individual) %>%
+  mutate(PCo1_diff = c(0, abs(diff(PCo1))))
+
+head(aggregated_data, 15)
+write.table(aggregated_data , "aggregated_pco1_data.csv", sep=",", row.names = TRUE,
+            col.names = TRUE)
+
+```
+
+
+```{r}
+# Adjust y-axis scale to a maximum of 0.8
+temporal_p <-
+  ggplot(aggregated_data, aes(x = Month, y = PCo1_diff, group = Individual, color = Individual)) +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2) +
+  facet_wrap(~ Individual, scales = "fixed") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        strip.text = element_text(size = 10, face = "bold"),
+        axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(x = "Month",
+       y = "Magnitude of Change (PCo1_diff)",
+       title = "Temporal Changes in Microbiome Composition"
+       ) +
+  scale_y_continuous(limits = c(0, 0.8))
+temporal_p
+
+
+ggsave("Temporal_mean_magnitude_genus.jpg", plot = temporal_p, width = 10, height = 8, dpi = 300)
+```
+
