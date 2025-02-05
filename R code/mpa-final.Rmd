@@ -20,11 +20,12 @@ library(hrbrthemes)
 ```
 
 ```{r}
-setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
-genus_data <- read.table("new-filtered_genus.txt" , header = TRUE , sep = '\t')
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+genus_data <- read_tsv("genus_data.txt" )
 colnames(genus_data) <- gsub("\\.", "-", colnames(genus_data))
 genus_data
 metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+metadata 
 ```
 
 ```{r}
@@ -56,10 +57,10 @@ print(head(tidy_data))
 ```{r}
 # First transform the data to wide format properly
 wide_data <- tidy_data %>%
-  select(SampleID, clade, Abundance) %>%
-  pivot_wider(names_from = clade, values_from = Abundance , values_fill = 0) %>%
+  select(SampleID, clade, Relative_Abundance) %>%
+  pivot_wider(names_from = clade, values_from = Relative_Abundance , values_fill = 0) %>%
   column_to_rownames("SampleID")
-
+wide_data
 # Calculate Bray-Curtis dissimilarity matrix
 bray_curtis_matrix <- vegdist(wide_data, method = "bray")
 
@@ -70,7 +71,8 @@ metadata_ordered <- metadata[match(rownames(wide_data), metadata$SampleID),]
 permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
 permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
 permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
-
+permanova_age <- adonis2(bray_curtis_matrix ~ Age, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_reproductive<- adonis2(bray_curtis_matrix ~ Reproductive, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
 # Print results
 print("PERMANOVA results for Season:")
 print(permanova_season)
@@ -80,27 +82,33 @@ print(permanova_sex)
 print("\
 PERMANOVA results for Individual:")
 print(permanova_individual)
+print("\
+PERMANOVA results for age:")
+print(permanova_age)
+print("\
+PERMANOVA results for reproductive:")
+print(permanova_reproductive)
+
 
 # Extract R-squared values and p-values
-r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1])
-p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1])
+r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1], permanova_age$R2[1],
+                  permanova_reproductive$R2[1])
+p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1], 
+                 permanova_age$`Pr(>F)`[1], permanova_reproductive$`Pr(>F)`[1] )
 
 # Create a data frame with the R-squared values and p-values from PERMANOVA
 permanova_results <- data.frame(
-  Factor = c("Season", "Individual", "Sex"),
-  R2 = r2_values,
-  P_value = p_values
+  Factor = c("Season", "Individual", "Sex" ,"Age" , "Reproductive"),
+  R2 = r2_values,  # Replace with actual r2_values for pw_permanova_results
+  P = p_values  # Replace with actual p_values for pw_permanova_results
 )
-print(permanova_results)
-
-# Create a bar plot using ggplot2
-library(ggplot2)
+permanova_results
 
 # Create the plot
 p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
-    geom_bar(stat = "identity", fill = ifelse(permanova_results$P_value < 0.05, "steelblue", "gray")) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P < 0.05, "steelblue", "gray")) +
     geom_text(aes(label = sprintf("R\u00b2 = %.3f\
-p = %.3f", R2, P_value)), 
+p = %.3f", R2, P)), 
               vjust = -0.5, size = 4) +
     theme_minimal() +
     labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
@@ -111,12 +119,71 @@ p = %.3f", R2, P_value)),
     ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
 
 # Save the plot
-# ggsave("permanova_results.png", p, width = 10, height = 6, dpi = 300)
+# ggsave("permanova_results_mpa.png", p, width = 10, height = 6, dpi = 300)
 
 # Display the plot
 print(p)
 
 ```
+```{r}
+# Ensure column names match
+colnames(pw_permanova_results) <- colnames(permanova_results)
+
+# Add a column to identify the datasets
+pw_permanova_results$Dataset <- "PW"
+permanova_results$Dataset <- "composition"
+
+# Combine the two datasets
+combined_permanova <- rbind(pw_permanova_results, permanova_results)
+
+# View the combined dataset
+print(combined_permanova)
+
+# Save the combined dataset to a CSV file
+# write.csv(combined_permanova, "combined_permanova_results_unstrat.csv", row.names = FALSE)
+
+```
+
+```{r}
+##
+library(ggplot2)
+library(reshape2)
+
+# Melt the data for heatmap visualization
+melted_data <- melt(combined_permanova, id.vars = c("Factor", "Dataset"))
+# Add a column to indicate significance levels for p-values
+melted_data$Significance <- ""
+melted_data$Significance[melted_data$variable == "P" & melted_data$value < 0.05] <- "*"
+melted_data$Significance[melted_data$variable == "P" & melted_data$value <= 0.001] <- "**"
+
+# Update the heatmap to include different significance stars
+heatmap_plot_all <- ggplot(melted_data, aes(x = Dataset, y = Factor, fill = value)) +
+  geom_tile() +
+  geom_text(aes(label = paste0(round(value, 3), Significance)), color = "white", size = 3) +
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_viridis(option = "viridis") +
+  theme_minimal() +
+  labs(title = "PERMANOVA Results Heatmap", fill = "Value",
+       caption = "Significance levels: * p < 0.05, ** p ≤ 0.001") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the updated heatmap with two levels of significance stars
+print(heatmap_plot_all)
+ggsave("permanova_results_combined_ustrat.png", heatmap_plot_all, width = 10, height = 6, dpi = 300)
+# Create the heatmap
+heatmap_plot <- ggplot(melted_data, aes(x = Dataset, y = Factor, fill = value)) +
+  geom_tile() +
+  facet_wrap(~variable, scales = "free") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0.5) +
+  theme_minimal() +
+  labs(title = "PERMANOVA Results Heatmap", fill = "Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display the heatmap
+
+
+```
+
 
 ```{r}
 #### overall abundance patherns
@@ -125,21 +192,22 @@ print(p)
 # Calculate mean abundance per genus across all samples
 mean_abundance <- tidy_data %>%
   group_by(clade) %>%
-  summarize(mean_abundance = mean(Abundance)) %>%
+  summarize(mean_abundance = mean(Relative_Abundance)) %>%
   arrange(desc(mean_abundance)) %>%
   head(10)  # Top 10 most abundant genera
+
 
 # Calculate abundance patterns across seasons for top 5 genera
 top5_genera <- mean_abundance$clade[1:5]
 seasonal_patterns <- tidy_data %>%
   filter(clade %in% top5_genera) %>%
   group_by(Season, clade) %>%
-  summarize(mean_abundance = mean(Abundance),
-            se = sd(Abundance)/sqrt(n())) %>%
+  summarize(mean_abundance = mean(Relative_Abundance),
+            se = sd(Relative_Abundance)/sqrt(n())) %>%
   ungroup()
 
 # Create a bar plot of top 10 most abundant genera
-p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_abundance)) +
+p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_abundance*100)) +
   geom_bar(stat = "identity", fill = "steelblue") +
   coord_flip() +
   theme_minimal() +
@@ -149,7 +217,7 @@ p1 <- ggplot(mean_abundance, aes(x = reorder(clade, mean_abundance), y = mean_ab
 
 # Create a faceted box plot for seasonal patterns
 p2 <- ggplot(tidy_data %>% filter(clade %in% top5_genera), 
-             aes(x = Season, y = Abundance, fill = Season)) +
+             aes(x = Season, y = Relative_Abundance*100 , fill = Season)) +
   geom_boxplot() +
   scale_fill_brewer(palette = "Dark2") +
   facet_wrap(~clade, scales = "free_y") +
@@ -165,9 +233,9 @@ seasonal_summary <- tidy_data %>%
   filter(clade %in% top5_genera) %>%
   group_by(Season, clade) %>%
   summarize(
-    mean_abundance = mean(Abundance),
-    sd_abundance = sd(Abundance),
-    median_abundance = median(Abundance)
+    mean_abundance = mean(Relative_Abundance),
+    sd_abundance = sd(Relative_Abundance),
+    median_abundance = median(Relative_Abundance)
   )
 
 p1
@@ -253,19 +321,20 @@ p2 <- ggplot(core_genera_filtered,
   )
 
 # Print plots
-print(p1)
+# print(p1)
 print(p2)
 # Save plots with high resolution
-ggsave("core_genera_abundance.pdf", p1, width = 12, height = 8, dpi = 300)
+# ggsave("core_genera_abundance.pdf", p1, width = 12, height = 8, dpi = 300)
 ggsave("core_genera_prevalence.pdf", p2, width = 12, height = 8, dpi = 300)
 
 ```
 ```{r}
+
 # First, let's create the Bubble Plot
 p3 <- ggplot(core_genera_filtered, 
        aes(x = Individual, 
-           y = reorder(clade, Mean_Abundance),
-           size = Mean_Abundance,
+           y = reorder(clade, Mean_Abundance*100),
+           size = Mean_Abundance*100,
            color = Prevalence)) +
   geom_point(alpha = 0.7) +
   scale_size_continuous(range = c(2, 12)) +
@@ -326,7 +395,7 @@ print(p4)
 
 # Save the plots as high-resolution PDFs
 ggsave("bubble_plot_core_genera.pdf", p3, width = 12, height = 8, dpi = 300)
-ggsave("violin_plot_core_genera.pdf", p4, width = 12, height = 8, dpi = 300)
+# ggsave("violin_plot_core_genera.pdf", p4, width = 12, height = 8, dpi = 300)
 
 # Print summary statistics
 summary_stats <- core_genera_filtered %>%
@@ -348,7 +417,7 @@ print(summary_stats)
 # Create faceted boxplots with jittered points for each individual
 p4_boxplot <- ggplot(tidy_data %>% 
                        inner_join(core_genera_filtered %>% select(Individual, clade)), 
-       aes(x = clade, y = Relative_Abundance)) +
+       aes(x = clade, y = Relative_Abundance*100)) +
   geom_boxplot(aes(fill = Individual), alpha = 0.6, outlier.shape = NA) +
   geom_jitter(aes(color = Individual), 
               width = 0.2, 
@@ -385,6 +454,7 @@ ggsave("faceted_boxplot_core_genera.pdf", p4_boxplot, width = 15, height = 8, dp
 
 ```
 
+
 ```{r}
 # Filter for top 10 genera
 top10_genera <- mean_abundance$clade[1:10]
@@ -393,55 +463,45 @@ filtered_data <- tidy_data %>%
 
 # Create a pivot table for the heatmap
 heatmap_data <- filtered_data %>%
-  select(SampleID, clade, Abundance) %>%
-  spread(key = clade, value = Abundance, fill = 0) %>%
+  select(SampleID, clade, Relative_Abundance) %>%
+  pivot_wider(names_from = clade, values_from = Relative_Abundance, values_fill = 0) %>%
   column_to_rownames(var = "SampleID")
 
 # Replace NA values with 0
 heatmap_data[is.na(heatmap_data)] <- 0
 
-# Transpose the heatmap data
-heatmap_data <- t(heatmap_data)
+# No need to transpose the data
 
-setwd("C:/Users/Owner/Desktop/Project-Howler/mpa")
-# Load metadata for annotations
-metadata <- read.csv("howlermeta.csv")
-
-# Ensure metadata columns match the SampleID in heatmap_data
+# Ensure metadata rows match the SampleID in heatmap_data
 metadata <- metadata %>%
-  filter(SampleID %in% colnames(heatmap_data))
+  filter(SampleID %in% rownames(heatmap_data))
 
 # Prepare annotation data
 annotation_data <- metadata %>%
-  select(SampleID, Season, Individual) %>%
+  select(SampleID, Season, Individual, Sex, Age, Reproductive) %>%
   column_to_rownames(var = "SampleID")
 
-# Convert Season and Individual to factors
-annotation_data$Season <- as.factor(annotation_data$Season)
-annotation_data$Individual <- as.factor(annotation_data$Individual)
-
-annotation_colors <- list(
-  Season = c("Dry" = "brown", "Intermediate" = "yellow", "Rain" = "blue"),
-  Individual = c("Dos" = "red", "Hugo" = "purple", "Isa" = "brown", "Jupiler" = "pink", "Melanie" = "orange", "Maia" = "green", "Uno" = "cyan")
-)
+# Convert factors (as before)
 
 # Create the heatmap with annotations
 p1 <- pheatmap(
-  heatmap_data,
-  annotation_col = annotation_data,  # Use annotation_col for x-axis annotations
+  heatmap_data * 100,
+  annotation_row = annotation_data,
   annotation_colors = annotation_colors,
-  color = viridis::magma(10),  # Ensure the color palette is correctly specified
+  color = viridis::magma(10),
   border_color = "black",
   cluster_rows = TRUE,
   cluster_cols = TRUE,
-  show_rownames = TRUE,
+  show_rownames = FALSE,  # Set to TRUE if you want to show SampleIDs
   show_colnames = TRUE,
+  angle_col = 45,  # This rotates column labels by 45 degrees
   main = "Heatmap of Top 10 Most Abundant Genera"
 )
 p1
-ggsave("Heatmap of Top 10 Most Abundant Genera.jpg", plot = p1, width = 10, height = 8, dpi = 300)
+ggsave("Heatmap of Top 10 Most Abundant Genera_all anotations.jpg", plot = p1, width = 10, height = 8, dpi = 300)
 
 ```
+
 ```{r}
 bray_curtis_matrix <- vegdist(wide_data, method = "bray")
 
@@ -558,7 +618,7 @@ temporal_p <-
 temporal_p
 
 
-ggsave("Temporal_mean_magnitude_genus.jpg", plot = temporal_p, width = 10, height = 8, dpi = 300)
+# ggsave("Temporal_mean_magnitude_genus.jpg", plot = temporal_p, width = 10, height = 8, dpi = 300)
 ```
 ```{r}
 
@@ -568,7 +628,7 @@ aggregated_data$Dataset <- "Genus"
 
 # Combine the datasets
 combined_data <- rbind(agg_data_pw, aggregated_data)
-
+# write.table(combined_data , "combined_data_pco1_data_unstrat.csv", sep=",", row.names = TRUE, col.names = TRUE)
 # Plot both datasets together
 temporal_combined <- ggplot(combined_data, aes(x = Month, y = PCo1_diff, group = interaction(Individual, Dataset), color = Dataset)) +
   geom_line(aes(linetype = Dataset), linewidth = 1) +
@@ -589,9 +649,78 @@ temporal_combined <- ggplot(combined_data, aes(x = Month, y = PCo1_diff, group =
 print(temporal_combined)
 
 # Save the plot
-ggsave("Temporal_mean_magnitude_combined.jpg", plot = temporal_combined, width = 12, height = 8, dpi = 300)
+# ggsave("Temporal_mean_magnitude_combined_unstrat.jpg", plot = temporal_combined, width = 12, height = 8, dpi = 300)
 
 
 ```
 
+```{r}
+##I'm using a xlx file that I created , OCt is baseline, every mean pcoa diff from oct
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+
+oct_bs <- read.csv("aggregated_pco1_data-baseline.csv")
+
+oct_bs
+
+```
+```{r}
+## reorder the months in the order of sampling timeline
+oct_bs <- oct_bs %>%
+  select(Individual, Month, PCo1_diff_from_oct) %>%
+  mutate(Month = factor(Month, levels = c("October", "November", "January", "February", 
+                                        "March", "April", "May", "June", "September")))
+
+oct_bs
+```
+
+```{r}
+ggplot(oct_bs, aes(x = Month, y = PCo1_diff_from_oct, group = 1, color = Individual)) +
+  geom_line() +
+  geom_point(size = 2) +
+  facet_wrap(~Individual) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom") +
+  labs(x = "Month",
+       y = "PCo1 Difference from October") +
+  scale_y_continuous(labels = scales::number_format(accuracy = 0.01)) +
+  scale_color_brewer(palette = "Set1")
+
+```
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+
+oct_bs_cm <- read.csv("combined_data_pco1_data_unstrat_baseline.csv")
+## reorder the months in the order of sampling timeline
+oct_bs_cm <- oct_bs_cm %>%
+  select(Individual, Month, PCo1_diff_from_oct, Dataset) %>%
+  mutate(Month = factor(Month, levels = c("October", "November", "January", "February", 
+                                        "March", "April", "May", "June", "September")))
+
+oct_bs_cm
+
+```
+```{r}
+# Set the correct month order
+month_order <- c("October", "November", "January", "February", "March", "April", "May", "June", "September")
+
+# Ensure the Month column is a factor with the correct order
+oct_bs_cm$Month <- factor(oct_bs_cm$Month, levels = month_order)
+
+# Filter data for PW and Genus datasets
+data_filtered <- oct_bs_cm %>% filter(Dataset %in% c("PW", "Genus"))
+
+# Create the faceted plot
+p6 <- ggplot(data_filtered, aes(x = Month, y = PCo1_diff_from_oct, color = Dataset, group = Dataset)) +
+  geom_line() +
+  geom_point() +
+  facet_wrap(~ Individual) +
+  labs(title = "PCo1_diff_from_oct Trends by Individual", x = "Month", y = "PCo1_diff_from_oct") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Print the plot
+print(p6)
+ggsave("Temporal_mean_magnitude_combined_unstrat_Oct.jpg", plot = p6, width = 12, height = 8, dpi = 300)
+```
 
