@@ -1,0 +1,375 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+library(ggridges)
+library(hrbrthemes)
+library(pals)
+```
+```{r}
+## coherent color pallets
+ind_palette <- c(
+  "Isa"      = "#4F81BD",  # Blue
+  "Uno"      = "#C0504D",  # Red
+  "Dos"      = "#9BBB59",  # Green
+  "Melanie"  = "#8064A2",  # Purple
+  "Maia"     = "#4BACC6",  # Teal
+  "Jupyler"  = "#F79646",  # Orange
+  "Hugo"     = "#855D5D"   # Brown
+)
+
+season_palette <- c("Rain"= "#120976","Intermediate"="#8DA080","Dry"="#DAA520" )
+
+## for other categorical colors like taxa
+
+my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
+                    "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
+                    "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", "#3C5941",
+                    "#3D3178",  "#81807C", "#374E55", "#E37E00" , "#7B3014")
+```
+
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/R code")
+
+bin_taxa <- read_tsv("gtdbtk.bac120.summary.tsv")
+bin_taxa
+metadata <- read.csv("howlermeta.csv")  
+metadata 
+```
+```{r}
+##clean th dataframe
+bin_taxa <- bin_taxa %>%
+  mutate(sample = sub("-bin.*", "", user_genome)) %>%
+  select(user_genome, classification, sample) %>%
+  mutate(bin_family = str_extract(classification, "(?<=f__)[^;]+") ) %>%
+  mutate(bin_genus =  str_extract(classification, "(?<=g__)[^;]+") ) %>%
+  mutate(bin_genus = replace_na(bin_genus, "Unknown"))
+  
+  
+bin_taxa
+
+# write.csv(bin_taxa, "MAG_clean_taxanomy.csv", row.names = FALSE)
+
+```
+
+```{r}
+## how many unique family and genus
+
+# Count
+unique_bin_family_count <- n_distinct(bin_taxa$bin_family)
+unique_bin_genus_count <- n_distinct(bin_taxa$bin_genus)
+unique_sample <- n_distinct(bin_taxa$sample)
+
+unique_bin_family_count
+unique_bin_genus_count
+unique_sample
+```
+
+```{r}
+##merge with metadata, left join, keep what ever is present in bin_taxa
+
+bin_taxa <-merged_df <- merge(bin_taxa, metadata, by.x='sample', by.y='SampleID', all.x =TRUE)
+colnames(bin_taxa) <- gsub("\\.x$|\\.y$", "", colnames(bin_taxa))
+bin_taxa
+# write.csv(bin_taxa, "MAG_clean_taxanomy_merged.csv", row.names = FALSE)
+```
+```{r}
+# Define custom color palette
+season_palette <- c("Rain"= "#120976", "Intermediate" = "#8DA080", "Dry" = "#DAA520")
+
+# Group by sample and count bins
+sample_bins <- df %>% 
+  group_by(sample, Season) %>% 
+  summarise(count_bins = n(), .groups = 'drop')
+
+# Calculate statistics per season
+season_stats <- sample_bins %>%
+  group_by(Season) %>%
+  summarise(
+    total_bins = sum(count_bins),
+    n_samples = n(),
+    mean_bins = mean(count_bins),
+    median_bins = median(count_bins),
+    sd_bins = sd(count_bins),
+    .groups = 'drop'
+  )
+
+# Sort samples
+sample_bins <- sample_bins %>% 
+  arrange(Season, desc(count_bins)) %>%
+  mutate(sample = factor(sample, levels = sample))
+
+p_bin_num <- ggplot(sample_bins, aes(x = sample, y = count_bins, fill = Season)) +
+  geom_bar(stat = "identity", alpha = 0.9, width = 0.8) +
+  labs(
+    title = "Distribution of Bacterial MAGs Across Samples",
+    
+    x = "Sample ID",
+    y = "Number of MAGs"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, size = 10, face = "bold"),
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(hjust = 0, face = "italic"),
+    legend.position = "top",
+    panel.grid.major.y = element_line(color = "gray90")
+  ) +
+  scale_fill_manual(values = season_palette)
+
+# Add season statistics
+annotation_data <- sample_bins %>%
+  group_by(Season) %>%
+  summarise(
+    x_pos = mean(as.integer(sample)),
+    y_pos = max(count_bins) * 1.1,
+    .groups = 'drop'
+  ) %>%
+  left_join(season_stats, by = "Season")
+
+# Add annotations with more statistics
+p_bin_num <- p_bin_num +
+  geom_text(
+    data = annotation_data,
+    aes(x = x_pos, y = y_pos, 
+        label = paste0(
+          "Total: ", total_bins, 
+          "\
+Samples: ", n_samples
+          
+        )),
+    color = "black",
+    fontface = "bold",
+    size = 6,
+    show.legend = FALSE
+  )
+
+# Add mean line per season
+p_bin_num <- p_bin_num +
+  stat_summary(
+    aes(group = Season, color = Season),
+    fun = mean, geom = "line", size = 1.2,
+    alpha = 0.7
+  ) +
+  scale_color_manual(values = season_palette) +
+  scale_color_manual(values = season_palette, guide = "none")
+
+# Export high-resolution figure
+ggsave("bacterial_bins_by_season.png", p_bin_num, width = 14, height = 8, dpi = 300)
+
+# Display the plot
+print(p_bin_num)
+```
+
+```{r}
+##let's plot
+## What are the monthly counts of different bin genera?
+
+library(ggplot2)
+library(dplyr)
+
+# Read the data
+df <- read.csv('MAG_clean_taxanomy_merged.csv', stringsAsFactors = FALSE)
+
+# Define the correct month levels as specified
+month_levels <- c("September", "October", "November", "January", "February", 
+                  "March", "April", "May", "June")
+
+# Calculate monthly counts by bin_genus
+monthly_counts <- df %>% 
+  group_by(Month, bin_family) %>% 
+  summarize(count = n(), .groups = 'drop')
+
+# Convert Month to a factor with the specified levels
+monthly_counts$Month <- factor(monthly_counts$Month, levels = month_levels, ordered = TRUE)
+
+# Let's identify the top genera by count to reduce legend size
+top_genera <- monthly_counts %>%
+  group_by(bin_family) %>%
+  summarize(total = sum(count)) %>%
+  arrange(desc(total)) %>%
+  head(15) %>%
+  pull(bin_family)
+
+# Create a new column for simplified genera (top 15 + "Other")
+monthly_counts <- monthly_counts %>%
+  mutate(simplified_genus = ifelse(bin_family %in% top_genera, bin_family, "Other"))
+
+# Re-aggregate the data with simplified genera
+simplified_counts <- monthly_counts %>%
+  group_by(Month, simplified_genus) %>%
+  summarize(count = sum(count), .groups = 'drop')
+
+# Create a stacked bar chart with the correct month order and simplified legend
+plot <- ggplot(simplified_counts, aes(x = Month, y = count, fill = simplified_genus)) + 
+  geom_bar(stat = 'identity', position = "stack") + 
+  labs(title = 'Monthly counts of different bin family', 
+       x = 'Month', 
+       y = 'Count', 
+       fill = 'Bin Family') + 
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "right",
+        legend.key.size = unit(0.5, "cm")) +
+   scale_fill_manual(values = my_palette)
+
+# Save the plot as a PNG file
+ggsave("monthly_bin_family_counts.png", plot, width = 10, height = 7, dpi = 300)
+
+# Save the plot as a PDF file for vector graphics
+# ggsave("monthly_bin_family_counts.pdf", plot, width = 10, height = 7)
+
+print("Plot saved as 'monthly_bin_family_counts.png' and 'monthly_bin_genera_counts.pdf'")
+
+# Display the plot
+print(plot)
+```
+```{r}
+# Define the custom month order  
+month_levels <- c("September", "October", "November", "January", "February",   
+                  "March", "April", "May", "June") 
+my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
+                    "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
+                    "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", "#3C5941",
+                    "#3D3178",  "#81807C", "#374E55", "#E37E00" , "#7B3014")
+  
+# Convert Month to a factor with the specified order  
+df$Month <- factor(df$Month, levels = month_levels)  
+  
+# Identify top 10 genera overall  
+top_genera <- df %>%   
+  group_by(bin_genus) %>%  
+  summarize(total = n(), .groups = "drop") %>%  
+  arrange(desc(total)) %>%  
+  slice(1:10) %>%  
+  pull(bin_genus)  
+  
+# Modify bin_genus labels: top genus remain, others are labeled "Other"  
+df <- df %>%   
+  mutate(bin_genus_mod = ifelse(bin_genus %in% top_genera, bin_genus, "Other"))  
+  
+# Aggregate counts for each month and modified genus  
+genus_counts_mod <- df %>%  
+  group_by(Month, bin_genus_mod) %>%  
+  summarize(count = n(), .groups = "drop")  
+  
+# Ensure Month factor levels are set in the aggregated data as well  
+genus_counts_mod$Month <- factor(genus_counts_mod$Month, levels = month_levels)  
+  
+# Create the stacked bar plot  
+p_mod <- ggplot(genus_counts_mod, aes(x = Month, y = count, fill = bin_genus_mod)) +  
+  geom_bar(stat = "identity") +  
+  labs(title = "Monthly Counts by Bin Genus (Top 10 + Other)",  
+       x = "Month",  
+       y = "Count",  
+       fill = "Bin Genus") +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+   scale_fill_manual(values = my_palette)
+  
+# Print the plot  
+print(p_mod)  
+```
+```{r}
+month_levels <- c("September", "October", "November", "January", "February",   
+                  "March", "April", "May", "June")  
+
+bin_taxa$Month <- factor(bin_taxa$Month, levels = month_levels)  
+  
+# Identify each individual's top 10 bin families  
+top_families_by_ind <- bin_taxa %>%  
+  group_by(Individual, bin_family) %>%  
+  summarize(total = n(), .groups = "drop") %>%  
+  arrange(Individual, desc(total)) %>%  
+  group_by(Individual) %>%  
+  slice(1:10) %>%  
+  select(Individual, bin_family)  
+  
+# Merge the top families info with the original dataset to retain only rows of top families  
+bin_taxa_top <- inner_join(bin_taxa, top_families_by_ind, by = c("Individual", "bin_family"))  
+  
+# Convert Month in the filtered data to the appropriate factor levels  
+bin_taxa_top$Month <- factor(bin_taxa_top$Month, levels = month_levels)  
+  
+# Aggregate counts for each individual, month, and bin_family  
+family_counts_top <- bin_taxa_top %>%  
+  group_by(Individual, Month, bin_family) %>%  
+  summarize(count = n(), .groups = "drop")  
+  
+# Ensure Month factor ordering in the aggregated data  
+family_counts_top$Month <- factor(family_counts_top$Month, levels = month_levels)  
+  
+# Create the stacked bar plot faceted by individual  
+p_facet <- ggplot(family_counts_top, aes(x = Month, y = count, fill = bin_family)) +  
+  geom_bar(stat = "identity") +  
+  labs(title = "Monthly Counts by Top 10 Bin Families for Each Individual",  
+       x = "Month",  
+       y = "Count",  
+       fill = "Bin Family") +  
+  facet_wrap(~ Individual) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_manual(values = my_palette)
+  
+# Print the plot  
+print(p_facet)  
+
+```
+```{r}
+top_families_by_season <- bin_taxa %>%  
+  group_by(Season, bin_family) %>%  
+  summarize(total = n(), .groups = "drop") %>%  
+  arrange(Season, desc(total)) %>%  
+  group_by(Season) %>%  
+  slice(1:10) %>%  
+  select(Season, bin_family)  
+  
+# Merge the top families info with the original dataset to keep only top families by season  
+bin_taxa_top <- inner_join(bin_taxa, top_families_by_season, by = c("Season", "bin_family"))  
+  
+# Convert Month in the filtered data to the appropriate factor levels again  
+bin_taxa_top$Month <- factor(bin_taxa_top$Month, levels = month_levels)  
+  
+# Aggregate monthly counts for each Season and bin_family  
+family_counts_top <- bin_taxa_top %>%  
+  group_by(Season, Month, bin_family) %>%  
+  summarize(count = n(), .groups = "drop")  
+  
+# Ensure Month factor ordering in the aggregated data  
+family_counts_top$Month <- factor(family_counts_top$Month, levels = month_levels)  
+  
+# Create the stacked bar plot faceted by Season  
+p_season_facet <- ggplot(family_counts_top, aes(x = Month, y = count, fill = bin_family)) +  
+  geom_bar(stat = "identity") +  
+  labs(title = "Monthly Counts by Top 10 Bin Families for Each Season",  
+       x = "Month",  
+       y = "Count",  
+       fill = "Bin Family") +  
+  facet_wrap(~ Season) +  
+  theme_minimal() +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  +
+  scale_fill_manual(values = my_palette)
+  
+# Print the plot  
+print(p_season_facet)  
+```
+

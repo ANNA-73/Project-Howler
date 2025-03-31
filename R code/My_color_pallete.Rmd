@@ -1,0 +1,36 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(rcartocolor)
+```
+
+```{r}
+ind_palette <- c("#4F81BD", "#C0504D", "#9BBB59", "#8064A2", "#4BACC6", "#F79646","#855D5D")
+show_col(ind_palette)
+
+ind_palette <- c(
+  "Isa"      = "#4F81BD",  # Blue
+  "Uno"      = "#C0504D",  # Red
+  "Dos"      = "#9BBB59",  # Green
+  "Melanie"  = "#8064A2",  # Purple
+  "Maia"     = "#4BACC6",  # Teal
+  "Jupyler"  = "#F79646",  # Orange
+  "Hugo"     = "#855D5D"   # Brown
+)
+
+season_palette <- c("Rain"= "#120976","Intermediate"="#8DA080","Dry"="#DAA520" )
+show_col(season_palette)
+```
+
+```{r}
+my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
+                    "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
+                    "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", "#3C5941",
+                    "#3D3178",  "#81807C", "#374E55", "#E37E00" , "#7B3014")
+show_col(my_palette)
+```
+
