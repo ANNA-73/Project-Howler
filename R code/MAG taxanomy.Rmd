@@ -38,7 +38,57 @@ my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
                     "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
                     "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", "#3C5941",
                     "#3D3178",  "#81807C", "#374E55", "#E37E00" , "#7B3014")
+
 ```
+
+```{r}
+### define my costum theme for plotting, I'll be using this for other plots in other notebooks as well
+Howler_theme <- function() {
+  # Define color palettes
+  ind_palette <- c(
+    "Isa"      = "#4F81BD",  # Blue
+    "Uno"      = "#C0504D",  # Red
+    "Dos"      = "#9BBB59",  # Green
+    "Melanie"  = "#8064A2",  # Purple
+    "Maia"     = "#4BACC6",  # Teal
+    "Jupyler"  = "#F79646",  # Orange
+    "Hugo"     = "#855D5D"   # Brown
+  )
+  
+  my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
+                  "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
+                  "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
+                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                  "#E37E00" , "#7B3014")
+  
+  season_palette <- c(
+    "Rain" = "#120976",
+    "Intermediate" = "#8DA080",
+    "Dry" = "#DAA520"
+  )
+  
+  # Return the theme configuration
+  theme_gray() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1,vjust = 1, size = 12, face = "bold"),
+      axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+      plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+      axis.title.x = element_text(size = 16, face = "bold"),
+      axis.title.y = element_text(size = 16, face = "bold"),
+      legend.title = element_text(size = 14, face = "bold"),
+      legend.text = element_text(size = 12, face = "bold"),
+      plot.subtitle = element_text(size = 12),
+      plot.caption = element_text(hjust = 0, face = "italic"),
+      legend.position = "top",
+      panel.grid.major.y = element_line(color = "gray90"),
+      axis.line.x = element_line(color = "black", linewidth = 0.8),
+      axis.line.y = element_line(color = "black", linewidth = 0.8)
+    )
+}
+
+
+```
+
 
 
 ```{r}
@@ -81,12 +131,63 @@ unique_sample
 ```{r}
 ##merge with metadata, left join, keep what ever is present in bin_taxa
 
-bin_taxa <-merged_df <- merge(bin_taxa, metadata, by.x='sample', by.y='SampleID', all.x =TRUE)
+bin_taxa <- merge(bin_taxa, metadata, by.x='sample', by.y='SampleID', all.x =TRUE)
 colnames(bin_taxa) <- gsub("\\.x$|\\.y$", "", colnames(bin_taxa))
 bin_taxa
 # write.csv(bin_taxa, "MAG_clean_taxanomy_merged.csv", row.names = FALSE)
 ```
 ```{r}
+## Most abundant bins? Top10 genus and family, absolute and relative abundance
+
+# Top 10 bin_family by count  
+top10_family <- bin_taxa %>%  
+  group_by(bin_family) %>%  
+  summarise(count = n()) %>%  
+  arrange(desc(count)) %>%  
+  slice(1:10) %>%  
+  mutate(relative = count / sum(count))  
+  
+# Top 10 bin_genus by count  
+top10_genus <- bin_taxa %>%  
+  group_by(bin_genus) %>%  
+  summarise(count = n()) %>%  
+  arrange(desc(count)) %>%  
+  slice(1:10) %>%  
+  mutate(relative = count / sum(count))  
+
+
+p_family <- ggplot(top10_family, aes(y = reorder(bin_family, -count), x = count)) +
+  geom_bar(stat = 'identity', fill = '#2C5985') +
+  coord_flip() +
+  geom_text(aes(label = paste0( round(relative*100, 1),'%')), hjust = 0.4, vjust = 1.2, color = "white" , size=6 , fontface ="bold") +
+  labs(title = 'Top 10 Most Abundant MAGs_Family Level', y = 'MAGs Family', x = 'Absolute Count') +
+  scale_fill_manual(values = my_palette) +
+    Howler_theme()
+
+# Visualization for top 10 bin_genus
+p_genus <- ggplot(top10_genus, aes(y = reorder(bin_genus, -count), x = count)) +
+  geom_bar(stat = 'identity', fill = '#9C4B46') +
+  coord_flip() +
+  geom_text(aes(label = paste0( round(relative*100, 1),'%')), hjust = 0.4, vjust = 1.2,color = "white", size=6 , fontface ="bold") +
+  labs(title = 'Top 10 Most Abundant MAGs_Genus Level', y = 'MAGs Genus', x = 'Absolute Count') +
+    scale_fill_manual(values = my_palette) +
+    Howler_theme()
+# Plot the figures
+print(p_family)
+print(p_genus)
+
+# Save the plots to file
+# ggsave('top10_bin_family.png', p_family, width = 10, height = 8, dpi = 300)
+# ggsave('top10_bin_genus.png', p_genus, width = 10, height = 8, dpi = 300)
+
+
+
+
+```
+
+```{r}
+##MAGs count distribution pattern by season
+
 # Define custom color palette
 season_palette <- c("Rain"= "#120976", "Intermediate" = "#8DA080", "Dry" = "#DAA520")
 
@@ -174,11 +275,13 @@ p_bin_num <- p_bin_num +
   scale_color_manual(values = season_palette, guide = "none")
 
 # Export high-resolution figure
-ggsave("bacterial_bins_by_season.png", p_bin_num, width = 14, height = 8, dpi = 300)
+# ggsave("bacterial_bins_by_season.png", p_bin_num, width = 14, height = 8, dpi = 300)
 
 # Display the plot
 print(p_bin_num)
 ```
+
+
 
 ```{r}
 ##let's plot
@@ -335,41 +438,6 @@ print(p_facet)
 
 ```
 ```{r}
-top_families_by_season <- bin_taxa %>%  
-  group_by(Season, bin_family) %>%  
-  summarize(total = n(), .groups = "drop") %>%  
-  arrange(Season, desc(total)) %>%  
-  group_by(Season) %>%  
-  slice(1:10) %>%  
-  select(Season, bin_family)  
-  
-# Merge the top families info with the original dataset to keep only top families by season  
-bin_taxa_top <- inner_join(bin_taxa, top_families_by_season, by = c("Season", "bin_family"))  
-  
-# Convert Month in the filtered data to the appropriate factor levels again  
-bin_taxa_top$Month <- factor(bin_taxa_top$Month, levels = month_levels)  
-  
-# Aggregate monthly counts for each Season and bin_family  
-family_counts_top <- bin_taxa_top %>%  
-  group_by(Season, Month, bin_family) %>%  
-  summarize(count = n(), .groups = "drop")  
-  
-# Ensure Month factor ordering in the aggregated data  
-family_counts_top$Month <- factor(family_counts_top$Month, levels = month_levels)  
-  
-# Create the stacked bar plot faceted by Season  
-p_season_facet <- ggplot(family_counts_top, aes(x = Month, y = count, fill = bin_family)) +  
-  geom_bar(stat = "identity") +  
-  labs(title = "Monthly Counts by Top 10 Bin Families for Each Season",  
-       x = "Month",  
-       y = "Count",  
-       fill = "Bin Family") +  
-  facet_wrap(~ Season) +  
-  theme_minimal() +  
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))  +
-  scale_fill_manual(values = my_palette)
-  
-# Print the plot  
-print(p_season_facet)  
+
 ```
 
