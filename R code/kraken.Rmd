@@ -1,0 +1,289 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+library(ggridges)
+library(hrbrthemes)
+```
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+kraken <- read_tsv("all_kraken_combined_mpa.txt" ) %>%
+  filter(str_detect(Classification, "d__Bacteria"))
+names(kraken) <- gsub("-report$", "", names(kraken))
+kraken
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+metadata 
+```
+
+```{r}
+kraken_family_data <- kraken %>%
+  filter(str_detect(Classification, "f__") & !str_detect(Classification, "g__")) %>%
+  mutate(Classification = sub(".*f__", "", Classification))
+
+
+kraken_genus_data <- kraken %>%
+  filter(str_detect(Classification, "g__")) %>%
+  filter(!str_detect(Classification, "s__")) %>%
+  mutate(Classification = sub(".*g__", "", Classification))
+
+
+
+
+kraken_species_data<- kraken %>%
+  filter(str_detect(Classification, "s__")) %>%
+   mutate(Classification = sub(".*s__", "", Classification))
+kraken_species_data
+
+unique_kraken_species_count <- n_distinct(kraken_species_data$Classification)
+
+# write.csv(kraken_family_data, "kraken_family_data.csv", row.names = FALSE)
+# write.csv(kraken_genus_data, "kraken_genus_data.csv", row.names = FALSE)
+# write.csv(kraken_species_data, "kraken_species_data.csv", row.names = FALSE)
+
+unique_kraken_species_count
+
+```
+
+```{r}
+k_species_long <- kraken_species_data %>%
+  pivot_longer(cols = -Classification, names_to = "SampleID", values_to = "Abundance")
+
+
+k_species_tidy_data <- merge(k_species_long, metadata, by="SampleID")
+
+###for genus
+k_genus_long <-kraken_genus_data %>%
+  pivot_longer(cols = -Classification, names_to = "SampleID", values_to = "Abundance")
+
+
+k_genus_tidy_data <- merge(k_genus_long, metadata, by="SampleID")
+
+
+## for family
+
+k_family_long <- kraken_family_data %>%
+  pivot_longer(cols = -Classification, names_to = "SampleID", values_to = "Abundance")
+
+
+k_family_tidy_data <- merge(k_family_long, metadata, by="SampleID")
+k_family_tidy_data
+```
+
+```{r}
+k_species_tidy_data <- k_species_tidy_data %>%
+  group_by(SampleID) %>%
+  mutate(Total_Abundance = sum(as.numeric(Abundance), na.rm = TRUE),
+         Relative_Abundance = as.numeric(Abundance) / Total_Abundance) %>%
+  ungroup()
+
+# Display the updated data with relative abundance
+print(head(k_species_tidy_data))
+
+## for genus
+
+k_genus_tidy_data <- k_genus_tidy_data %>%
+  group_by(SampleID) %>%
+  mutate(Total_Abundance = sum(as.numeric(Abundance), na.rm = TRUE),
+         Relative_Abundance = as.numeric(Abundance) / Total_Abundance) %>%
+  ungroup()
+
+# Display the updated data with relative abundance
+print(head(k_genus_tidy_data))
+
+### for family
+
+k_family_tidy_data <- k_family_tidy_data %>%
+  group_by(SampleID) %>%
+  mutate(Total_Abundance = sum(as.numeric(Abundance), na.rm = TRUE),
+         Relative_Abundance = as.numeric(Abundance) / Total_Abundance) %>%
+  ungroup()
+
+# Display the updated data with relative abundance
+print(head(k_family_tidy_data))
+
+```
+
+```{r}
+# First transform the data to wide format properly
+wide_data <- k_family_tidy_data %>%
+  select(SampleID, Classification, Relative_Abundance) %>%
+  pivot_wider(names_from = Classification, values_from = Relative_Abundance , values_fill = 0) %>%
+  column_to_rownames("SampleID")
+wide_data
+# Calculate Bray-Curtis dissimilarity matrix
+bray_curtis_matrix <- vegdist(wide_data, method = "bray")
+
+# Make sure metadata matches the sample order
+metadata_ordered <- metadata[match(rownames(wide_data), metadata$SampleID),]
+
+# Now run PERMANOVA
+permanova_season <- adonis2(bray_curtis_matrix ~ Season, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_sex <- adonis2(bray_curtis_matrix ~ Sex, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+permanova_individual <- adonis2(bray_curtis_matrix ~ Individual, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+permanova_age <- adonis2(bray_curtis_matrix ~ Age, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_reproductive<- adonis2(bray_curtis_matrix ~ Reproductive, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+# Print results
+print("PERMANOVA results for Season:")
+print(permanova_season)
+print("\
+PERMANOVA results for Sex:")
+print(permanova_sex)
+print("\
+PERMANOVA results for Individual:")
+print(permanova_individual)
+print("\
+PERMANOVA results for age:")
+print(permanova_age)
+print("\
+PERMANOVA results for reproductive:")
+print(permanova_reproductive)
+
+
+# Extract R-squared values and p-values
+r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1], permanova_age$R2[1],
+                  permanova_reproductive$R2[1])
+p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1], 
+                 permanova_age$`Pr(>F)`[1], permanova_reproductive$`Pr(>F)`[1] )
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+  Factor = c("Season", "Individual", "Sex" ,"Age" , "Reproductive"),
+  R2 = r2_values,  # Replace with actual r2_values for pw_permanova_results
+  P = p_values  # Replace with actual p_values for pw_permanova_results
+)
+permanova_results
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+# ggsave("permanova_results_mpa_phylum.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+```
+```{r}
+
+#### overall abundance patherns
+
+
+# Calculate mean abundance per genus across all samples
+mean_abundance <- k_family_tidy_data %>%
+  group_by(Classification) %>%
+  summarize(mean_abundance = mean(Relative_Abundance)) %>%
+  arrange(desc(mean_abundance)) %>%
+  head(10)  # Top 10 most abundant genera
+
+
+# Calculate abundance patterns across seasons for top 5 genera
+top5_genera <- mean_abundance$Classification[1:5]
+seasonal_patterns <- k_family_tidy_data %>%
+  filter(Classification %in% top5_genera) %>%
+  group_by(Season, Classification) %>%
+  summarize(mean_abundance = mean(Relative_Abundance),
+            se = sd(Relative_Abundance)/sqrt(n())) %>%
+  ungroup()
+
+# Create a bar plot of top 10 most abundant genera
+p1 <- ggplot(mean_abundance, aes(x = reorder(Classification, mean_abundance), y = mean_abundance*100)) +
+  geom_bar(stat = "identity", fill = "#2C5985") +
+  coord_flip() +
+ labs(title = "Top 10 Most Abundant Families By Kraken",
+       x = "Family",
+       y = "Mean Relative Abundance (%)") +
+  theme_gray() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 18, face = "bold"),
+    axis.title.y = element_text(size = 18, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(hjust = 0, face = "italic"),
+    legend.position = "right",
+    legend.key.size = unit(1, 'cm'),
+    panel.grid.major.y = element_line(color = "gray90"),
+    axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
+    axis.line.y = element_line(color = "#142D4A", linewidth = 0.8)
+  )
+
+# Create a faceted box plot for seasonal patterns
+p2 <- ggplot(k_family_tidy_data %>% filter(Classification %in% top5_genera), 
+             aes(x = Season, y = Relative_Abundance * 100, fill = Season)) +
+  geom_boxplot() +
+  facet_wrap(~Classification, scales = "free_y") +
+  scale_fill_manual(values = season_palette) +
+  labs(
+    title = "Seasonal Distribution of Top 5 Most Abundant Families By Kraken",
+    y = "Relative Abundance (%)"
+  ) +
+  theme_gray() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 10, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 18, face = "bold"),
+    axis.title.y = element_text(size = 18, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(hjust = 0, face = "italic"),
+    legend.position = "right",
+    legend.key.size = unit(1, 'cm'),
+    panel.grid.major.y = element_line(color = "gray90"),
+    axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
+    axis.line.y = element_line(color = "#142D4A", linewidth = 0.8)
+  )
+
+# Print the plot to the R graphics device
+print(p2)
+
+
+
+ # Print summary statistics
+print("Summary of top 5 Family abundance by season:")
+seasonal_summary <- k_family_tidy_data %>%
+  filter(Classification %in% top5_genera) %>%
+  group_by(Season, Classification) %>%
+  summarize(
+    mean_abundance = mean(Relative_Abundance),
+    sd_abundance = sd(Relative_Abundance),
+    median_abundance = median(Relative_Abundance)
+  )
+
+p1
+p2
+ggsave("Kraken_Top 10 Most Abundant Family .jpg", plot = p1, width = 10, height = 6, dpi = 300)
+ggsave("Kraken_Seasonal Distribution of Top 5 Most Abundant Family .jpg", plot = p2, width = 10, height = 6, dpi = 300)
+
+
+```
+
