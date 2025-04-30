@@ -1,0 +1,651 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+library(ggridges)
+library(hrbrthemes)
+
+```
+```{r}
+
+run_permanova <- function(distance_matrix, metadata, factors, strata_vars, permutations = 999) {
+  library(vegan)
+  
+  # Clean column and row names
+  colnames(distance_matrix) <- gsub("profiled_", "", colnames(distance_matrix))
+  colnames(distance_matrix) <- gsub("\\.", "-", colnames(distance_matrix))
+  rownames(distance_matrix) <- gsub("profiled_", "", rownames(distance_matrix))
+  
+  # Make sure metadata matches the sample order
+  metadata_ordered <- metadata[match(rownames(distance_matrix), metadata$SampleID),]
+  
+  # Initialize lists to store results
+  permanova_results <- list()
+  r2_values <- c()
+  p_values <- c()
+  
+  # Run PERMANOVA for each factor
+  for (i in seq_along(factors)) {
+    factor <- factors[i]
+    strata <- strata_vars[i]
+    
+    formula <- as.formula(paste("distance_matrix ~", factor))
+    permanova <- adonis2(formula, data = metadata_ordered, strata = metadata_ordered[[strata]], permutations = permutations)
+    
+    permanova_results[[factor]] <- permanova
+    r2_values <- c(r2_values, permanova$R2[1])
+    p_values <- c(p_values, permanova$`Pr(>F)`[1])
+  }
+  
+  # Create a data frame with the R-squared values and p-values from PERMANOVA
+  results_df <- data.frame(
+    Factor = factors,
+    R2 = r2_values,
+    P = p_values
+  )
+  
+  return(list(permanova_results = permanova_results, summary = results_df))
+}
+
+```
+
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+
+unifrac <- read.table("beta_unweighted-unifrac.tsv", header = TRUE, row.names = 1 )
+
+colnames(unifrac) <- gsub("profiled_", "", colnames(unifrac))
+colnames(unifrac) <- gsub("\\.", "-", colnames(unifrac))
+rownames(unifrac) <- gsub("profiled_", "", rownames(unifrac))
+unifrac
+metadata <- read.csv("howlermeta.csv")  # Replace with your actual file name
+metadata 
+```
+```{r}
+# Make sure metadata matches the sample order
+metadata_ordered <- metadata[match(rownames(unifrac), metadata$SampleID),]
+
+# Now run PERMANOVA
+permanova_season <- adonis2(unifrac ~ Season, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_sex <- adonis2(unifrac ~ Sex, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+permanova_individual <- adonis2(unifrac ~ Individual, data = metadata_ordered,strata = metadata_ordered$Season, permutations = 999)
+permanova_age <- adonis2(unifrac ~ Age, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+permanova_reproductive<- adonis2(unifrac ~ Reproductive, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
+
+# Extract R-squared values and p-values
+r2_values <- c(permanova_season$R2[1], permanova_individual$R2[1], permanova_sex$R2[1], permanova_age$R2[1],
+                  permanova_reproductive$R2[1])
+p_values <- c(permanova_season$`Pr(>F)`[1], permanova_individual$`Pr(>F)`[1], permanova_sex$`Pr(>F)`[1], 
+                 permanova_age$`Pr(>F)`[1], permanova_reproductive$`Pr(>F)`[1] )
+
+# Create a data frame with the R-squared values and p-values from PERMANOVA
+permanova_results <- data.frame(
+  Factor = c("Season", "Individual", "Sex" ,"Age" , "Reproductive"),
+  R2 = r2_values,  # Replace with actual r2_values for pw_permanova_results
+  P = p_values  # Replace with actual p_values for pw_permanova_results
+)
+permanova_results
+
+# Create the plot
+p <- ggplot(permanova_results, aes(x = reorder(Factor, R2), y = R2)) +
+    geom_bar(stat = "identity", fill = ifelse(permanova_results$P < 0.05, "steelblue", "gray")) +
+    geom_text(aes(label = sprintf("R\u00b2 = %.3f\
+p = %.3f", R2, P)), 
+              vjust = -0.5, size = 4) +
+    theme_minimal() +
+    labs(title = "PERMANOVA Results: Variance Explained by Each Factor",
+         x = "Factor",
+         y = "R\u00b2 (Variance Explained)") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ylim(0, max(permanova_results$R2) * 1.2)  # Add some space for the labels
+
+# Save the plot
+# ggsave("permanova_results_UUF.png", p, width = 10, height = 6, dpi = 300)
+
+# Display the plot
+print(p)
+```
+```{r}
+##comparing ll distance matricies in scatterplot
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+uuf <- read.table("beta_unweighted-unifrac.tsv", header = TRUE, row.names = 1 )
+
+colnames(uuf) <- gsub("profiled_", "", colnames(uuf))
+colnames(uuf) <- gsub("\\.", "-", colnames(uuf))
+rownames(uuf) <- gsub("profiled_", "", rownames(uuf))
+
+wuf <-  read.table("beta_weighted-unifrac.tsv", header = TRUE, row.names = 1 )
+
+colnames(wuf) <- gsub("profiled_", "", colnames(wuf))
+colnames(wuf) <- gsub("\\.", "-", colnames(wuf))
+rownames(wuf) <- gsub("profiled_", "", rownames(wuf))
+
+
+bc <- read.table("beta_bray-curtis.tsv", header = TRUE, row.names = 1 )
+
+colnames(bc) <- gsub("profiled_", "", colnames(bc))
+colnames(bc) <- gsub("\\.", "-", colnames(bc))
+rownames(bc) <- gsub("profiled_", "", rownames(bc))
+
+
+
+```
+```{r}
+##pairwise copmarison
+
+uuf_numeric <- as.numeric(unlist(uuf))
+wuf_numeric <- as.numeric(unlist(wuf))
+bc_numeric <- as.numeric(unlist(bc))
+
+# Combine into a matrix
+d.vector.matrix <- cbind(uuf_numeric, wuf_numeric, bc_numeric)
+colnames(d.vector.matrix) <- c("UUF", "WUF", "BC")
+
+# Create pairwise scatter plots
+pairs(d.vector.matrix)
+
+
+
+```
+
+```{r}
+pcoa_result <- cmdscale(wuf, eig = TRUE, k = 2)
+
+# Create a dataframe for plotting
+pcoa_df <- data.frame(
+  PCoA1 = pcoa_result$points[,1],
+  PCoA2 = pcoa_result$points[,2],
+  Season = metadata$Season,
+  Individual = metadata$Individual
+)
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+
+# Calculate variance explained
+variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+pcoa1_var <- variance_explained[1]
+pcoa2_var <- variance_explained[2]
+
+# Merge with metadata
+pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
+
+# Plot PCoA results by Season
+p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome Composition by Season, Weighted Unifrac ",
+    x = paste0("PCoA1 (", pcoa1_var, "%)"),
+    y = paste0("PCoA2 (", pcoa2_var, "%)")
+  ) +
+  common_theme +
+  theme(
+    axis.line = element_line(color = "black", size = 1)  # Add axis lines
+  )
+
+# Plot PCoA results by Individual
+p2 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Individual)) +
+  geom_point(size = 3, alpha = 0.6) +
+  theme_minimal() +
+  labs(
+    title = "PCoA of Gut Microbiome Composition by Individual, Weighted Unifrac",
+    x = paste0("PCoA1 (", pcoa1_var, "%)"),
+    y = paste0("PCoA2 (", pcoa2_var, "%)")
+  ) +
+   common_theme +
+  theme(
+    axis.line = element_line(color = "black", size = 1)  # Add axis lines
+  )
+
+# Print plots
+print(p1)
+print(p2)
+
+ggsave("wuf-PCoA of Gut Microbiome Composition by Season.jpg", plot = p1, width = 10, height = 8, dpi = 300)
+ggsave("wuf-PCoA of Gut Microbiome Composition by Individua.jpg", plot = p2, width = 10, height = 8, dpi = 300)
+
+```
+
+```{r}
+# Create a dataframe with the variance explained by each coordinate
+bc_variance_df <- data.frame(
+  Coordinate = paste0("PCo", 1:length(pcoa_result$eig)),
+  Variance = pcoa_result$eig / sum(pcoa_result$eig) * 100
+)
+
+# Filter to include only the first 10 coordinates
+bc_variance_df <- bc_variance_df[1:10, ]
+
+# Create the bar plot
+library(ggplot2)
+
+bc_pco <- ggplot(bc_variance_df, aes(x = reorder(Coordinate, -Variance), y = Variance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(x = "PCoA Coordinate", 
+       y = "Variance Explained (%)", 
+       title = "Variance Explained by PCoA Coordinates (1 to 10)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(bc_variance_df$Variance) * 1.1))
+bc_pco
+# ggsave("bc-PCoA coordinates.jpg", plot = bc_pco, width = 10, height = 8, dpi = 300)
+```
+
+```{r}
+pcoa_result <- cmdscale(uuf, eig = TRUE, k = 2)
+
+# Create a dataframe for plotting
+pcoa_df <- data.frame(
+  PCoA1 = pcoa_result$points[,1],
+  PCoA2 = pcoa_result$points[,2],
+  Season = metadata$Season,
+  Individual = metadata$Individual
+)
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+# Create a dataframe with the variance explained by each coordinate
+uuf_variance_df <- data.frame(
+  Coordinate = paste0("PCo", 1:length(pcoa_result$eig)),
+  Variance = pcoa_result$eig / sum(pcoa_result$eig) * 100
+)
+
+# Filter to include only the first 10 coordinates
+uuf_variance_df <- uuf_variance_df[1:10, ]
+
+# Create the bar plot
+library(ggplot2)
+
+uuf_pco <- ggplot(uuf_variance_df, aes(x = reorder(Coordinate, -Variance), y = Variance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(x = "PCoA Coordinate", 
+       y = "Variance Explained (%)", 
+       title = "Variance Explained by PCoA Coordinates (1 to 10)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(uuf_variance_df$Variance) * 1.1))
+uuf_pco
+# ggsave("uuf-PCoA coordinates.jpg", plot = uuf_pco, width = 10, height = 8, dpi = 300)
+
+```
+
+```{r}
+pcoa_result <- cmdscale(wuf, eig = TRUE, k = 2)
+
+# Create a dataframe for plotting
+pcoa_df <- data.frame(
+  PCoA1 = pcoa_result$points[,1],
+  PCoA2 = pcoa_result$points[,2],
+  Season = metadata$Season,
+  Individual = metadata$Individual
+)
+
+pcoa_points <- data.frame(
+  SampleID = rownames(wide_data),
+  PCo1 = pcoa_result$points[,1],
+  PCo2 = pcoa_result$points[,2]
+)
+# Create a dataframe with the variance explained by each coordinate
+wuf_variance_df <- data.frame(
+  Coordinate = paste0("PCo", 1:length(pcoa_result$eig)),
+  Variance = pcoa_result$eig / sum(pcoa_result$eig) * 100
+)
+
+# Filter to include only the first 10 coordinates
+wuf_variance_df <- wuf_variance_df[1:10, ]
+
+# Create the bar plot
+library(ggplot2)
+
+wuf_pco <- ggplot(wuf_variance_df, aes(x = reorder(Coordinate, -Variance), y = Variance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  labs(x = "PCoA Coordinate", 
+       y = "Variance Explained (%)", 
+       title = "Variance Explained by PCoA Coordinates (1 to 10)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(expand = c(0, 0), limits = c(0, max(wuf_variance_df$Variance) * 1.1))
+wuf_pco
+# ggsave("wuf-PCoA coordinates.jpg", plot = wuf_pco, width = 10, height = 8, dpi = 300)
+
+
+```
+```{r}
+# Assuming you have already created the variance dataframes for each metric
+# If not, you'll need to create them first
+
+# Combine the dataframes
+combined_df <- bind_rows(
+  mutate(bc_variance_df, Metric = "Bray-Curtis"),
+  mutate(uuf_variance_df, Metric = "Unweighted UniFrac"),
+  mutate(wuf_variance_df, Metric = "Weighted UniFrac")
+)
+
+# Create the combined plot
+combined_plot <- ggplot(combined_df, aes(x = Coordinate, y = Variance, fill = Metric)) +
+  geom_bar(stat = "identity", position = position_dodge()) +
+  theme_minimal() +
+  labs(x = "PCoA Coordinate", 
+       y = "Variance Explained (%)", 
+       title = "Variance Explained by PCoA Coordinates (1 to 10) for Different Distance Metrics") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "top") +
+  scale_fill_manual(values = c("Bray-Curtis" = "steelblue", 
+                               "Unweighted UniFrac" = "darkgreen", 
+                               "Weighted UniFrac" = "darkred")) +
+  scale_x_discrete(limits = paste0("PCo", 1:10))
+
+# Display the plot
+print(combined_plot)
+
+# Save the plot
+# ggsave("Combined_PCoA_coordinates.jpg", plot = combined_plot, width = 12, height = 8, dpi = 300)
+
+```
+```{r}
+factors_to_test <- c("Season", "Individual", "Sex", "Age", "Reproductive")
+strata_variables <- c("Individual", "Season", "Season", "Individual", "Individual")
+uuf_results  <- run_permanova(uuf,metadata,factors_to_test,strata_variables)
+print(uuf_results$summary)
+
+```
+```{r}
+factors_to_test <- c("Season", "Individual", "Sex", "Age", "Reproductive")
+strata_variables <- c("Individual", "Season", "Season", "Individual", "Individual")
+wuf_results  <- run_permanova(wuf,metadata,factors_to_test,strata_variables)
+print(wuf_results$summary)
+
+
+```
+
+```{r}
+factors_to_test <- c("Season", "Individual", "Sex", "Age", "Reproductive")
+strata_variables <- c("Individual", "Season", "Season", "Individual", "Individual")
+bc_results  <- run_permanova(bc,metadata,factors_to_test,strata_variables)
+print(bc_results$summary)
+```
+```{r}
+## plot all permanova summeries
+# Combine the three summaries into one data frame
+combined_df <- data.frame(
+  Factor = bc_results$summary$Factor,
+  BC = bc_results$summary$R2,
+  WUF = wuf_results$summary$R2,
+  UUF = uuf_results$summary$R2,
+  PW_BC = pw_permanova_results$R2_pw
+)
+
+# Melt the data frame for ggplot
+melted_df <- melt(combined_df, id.vars = "Factor", variable.name = "Method", value.name = "R2")
+
+# Add significance stars
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else return("")
+}
+
+melted_df$stars <- c(
+  sapply(bc_results$summary$P, add_stars),
+  sapply(wuf_results$summary$P, add_stars),
+  sapply(uuf_results$summary$P, add_stars),
+  sapply(pw_permanova_results$P_value_pw, add_stars)
+)
+
+
+
+p7 <- ggplot(melted_df, aes(x = Method, y = Factor, fill = R2)) +
+  geom_raster() +
+  geom_tile(width = 1, height = 1, color = "black",
+            lwd = 1,
+            linetype = 1) +  # Adjust these values as needed
+  geom_text(aes(label = paste(sprintf("%.3f", R2), stars)), size = 5, color = "white", fontface = "bold") +
+  scale_fill_gradientn(colours = c("#5E4FA2", "#FDAE61", "#FFFFBF", "#9E0142"), 
+                       limits = c(0, 1), 
+                       values = scales::rescale(c(0, 0.33, 0.67, 1))) +
+  theme_minimal() +
+  labs(title = "PERMANOVA R² Values Comparison", 
+       x = "Distance Matrix", 
+       y = "Factor",
+       fill = "R² Value",
+       caption = " ** p < 0.001    * p < 0.05") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size = 14,face = "bold"),
+        axis.text.y = element_text(angle = 0, hjust = 1,size = 14,face = "bold"),
+        plot.title = element_text(hjust = 0.5 , size = 20, face = "bold"),
+        axis.title.x = element_text(size = 16, face = "bold"),
+        axis.title.y = element_text(size = 16, face = "bold"),
+        legend.title = element_text(size = 14),
+        legend.text = element_text(size = 12),
+        legend.position = "right",
+        plot.caption = element_text(hjust = 0, size = 14, margin = margin(t = 10))) +
+  coord_fixed()
+
+p7
+
+ggsave("PERMANOVA_R2_comparison.png", p7, width = 14, height = 8, dpi = 300)
+
+```
+
+```{r}
+library(ggplot2)
+library(reshape2)
+library(patchwork)
+
+# Separate PW_BC from other methods
+combined_df_main <- data.frame(
+  Factor = bc_results$summary$Factor,
+  BC = bc_results$summary$R2,
+  WUF = wuf_results$summary$R2,
+  UUF = uuf_results$summary$R2
+)
+
+combined_df_pw <- data.frame(
+  Factor = bc_results$summary$Factor,
+  PW_BC = pw_permanova_results$R2_pw
+)
+
+# Melt the data frames
+melted_df_main <- melt(combined_df_main, id.vars = "Factor", variable.name = "Method", value.name = "R2")
+melted_df_pw <- melt(combined_df_pw, id.vars = "Factor", variable.name = "Method", value.name = "R2")
+
+# Add significance stars
+add_stars <- function(p_value) {
+  if (p_value < 0.001) return("***")
+  else if (p_value < 0.01) return("**")
+  else if (p_value < 0.05) return("*")
+  else return("")
+}
+
+melted_df_main$stars <- c(
+  sapply(bc_results$summary$P, add_stars),
+  sapply(wuf_results$summary$P, add_stars),
+  sapply(uuf_results$summary$P, add_stars)
+)
+
+melted_df_pw$stars <- sapply(pw_permanova_results$P_value_pw, add_stars)
+
+# Update common_theme to use theme_gray() and set transparent background
+common_theme <- theme_gray() +
+  theme(
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right",
+    plot.caption = element_text(hjust = 0, size = 14, margin = margin(t = 10))
+  )
+
+# Plot for BC, WUF, and UUF
+p1 <- ggplot(melted_df_main, aes(x = Method, y = Factor, fill = R2)) +
+  geom_raster() +
+  geom_tile(width = 1, height = 1, color = "black", lwd = 1, linetype = 1) +
+  geom_text(aes(label = paste(sprintf("%.3f", R2), stars)), size = 5, color = "white", fontface = "bold") +
+  scale_fill_gradientn(colours = c("#5E4FA2", "#FDAE61", "#FFFFBF", "#9E0142"), 
+                       limits = c(0, 1), 
+                       values = scales::rescale(c(0, 0.33, 0.67, 1))) +
+  labs(x = "Distance Matrix", y = "Factor", fill = "R² Value") +
+  common_theme +
+  theme(legend.position = "none") +
+  coord_fixed()
+
+# Plot for PW_BC
+p2 <- ggplot(melted_df_pw, aes(x = Method, y = Factor, fill = R2)) +
+  geom_raster() +
+  geom_tile(width = 1, height = 1, color = "black", lwd = 1, linetype = 1) +
+  geom_text(aes(label = paste(sprintf("%.3f", R2), stars)), size = 5, color = "white", fontface = "bold") +
+  scale_fill_gradientn(colours = c("#5E4FA2", "#FDAE61", "#FFFFBF", "#9E0142"), 
+                       limits = c(0, 1), 
+                       values = scales::rescale(c(0, 0.33, 0.67, 1))) +
+  labs(x = NULL, y = NULL, fill = "R² Value") +
+  common_theme +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+  coord_fixed()
+
+# Suppress individual legends
+p1 <- p1 + theme(legend.position = "none")
+p2 <- p2 + theme(legend.position = "none")
+
+# Combine plots using patchwork with a shared legend on the right
+final_plot <- p1 + plot_spacer()+ p2 +
+  plot_layout(widths = c(3,0.1, 1), guides = "collect") &
+  plot_annotation(
+    title = "PERMANOVA R² Values Comparison",
+    caption = "** p < 0.001    * p < 0.05"
+  ) &
+  theme(
+    legend.position = "right",
+    plot.caption = element_text(hjust = 0.5, size = 14, margin = margin(t = 10)),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.box.background = element_rect(fill = "transparent", colour = NA)
+  )
+
+
+# Save the plot
+final_plot
+ggsave("PERMANOVA_R2_comparison_wrapped.png", final_plot, width = 14, height = 8, dpi = 300, bg = "transparent")
+
+```
+```{r}
+library(ggplot2)
+library(reshape2)
+library(patchwork)
+library(dplyr)
+
+# Combine data into a single tidy format
+combined_df <- bind_rows(
+  bc_results$summary %>% select(Factor, R2) %>% mutate(Method = "BC", P = bc_results$summary$P),
+  wuf_results$summary %>% select(Factor, R2) %>% mutate(Method = "WUF", P = wuf_results$summary$P),
+  uuf_results$summary %>% select(Factor, R2) %>% mutate(Method = "UUF", P = uuf_results$summary$P),
+  pw_permanova_results %>% transmute(Factor = bc_results$summary$Factor, R2 = R2_pw, Method = "PW_BC", P = P_value_pw)
+)
+write.table(combined_df , "permanova_results.tsv")
+# Function to assign significance stars
+add_stars <- function(p) {
+  case_when(
+    p < 0.001 ~ "***",
+    p < 0.01  ~ "**",
+    p < 0.05  ~ "*",
+    TRUE      ~ ""
+  )
+}
+
+combined_df <- combined_df %>%
+  mutate(stars = add_stars(P))
+
+common_theme <- theme_gray() +
+  theme(
+    panel.background = element_rect(fill = "transparent", colour = NA),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+    plot.title = element_text(hjust = 0.5, vjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right",
+    plot.caption = element_text(hjust = 0, size = 14, margin = margin(t = 10))
+  )
+
+# Create plot for BC, WUF, UUF
+p1 <- ggplot(combined_df %>% filter(Method != "PW_BC"), aes(x = Method, y = Factor, fill = R2)) +
+  geom_raster() +
+  geom_tile(color = "black", size = 1) +
+  geom_text(aes(label = paste(sprintf("%.3f", R2), stars)), size = 5, color = "white", fontface = "bold") +
+  scale_fill_gradientn(
+    colours = c("#5E4FA2", "#FDAE61", "#FFFFBF", "#9E0142"), 
+    limits = c(0, 1), 
+    values = scales::rescale(c(0, 0.33, 0.67, 1))
+  ) +
+  labs(x = "Distance Matrix", y = "Factor", fill = "R² Value") +
+  common_theme +
+  coord_fixed()
+
+# Create plot for PW_BC
+p2 <- ggplot(combined_df %>% filter(Method == "PW_BC"), aes(x = Method, y = Factor, fill = R2)) +
+  geom_raster() +
+  geom_tile(color = "black", size = 1) +
+  geom_text(aes(label = paste(sprintf("%.3f", R2), stars)), size = 5, color = "white", fontface = "bold") +
+  scale_fill_gradientn(
+    colours = c("#5E4FA2", "#FDAE61", "#FFFFBF", "#9E0142"), 
+    limits = c(0, 1), 
+    values = scales::rescale(c(0, 0.33, 0.67, 1))
+  ) +
+  labs(x = NULL, y = NULL, fill = "R² Value") +
+  common_theme +
+  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank()) +
+  coord_fixed()
+
+# Use plot_spacer() to add space between plots
+final_plot <- p1 + plot_spacer() + p2 +
+  plot_layout(widths = c(3, 0.1, 1), guides = "collect") &
+  plot_annotation(
+    title = "PERMANOVA R² Values Comparison",
+    caption = "** p < 0.001    * p < 0.05"
+  ) &
+  theme(
+    legend.position = "right",
+    plot.title = element_text(hjust = 0.5, vjust = 0.5, size = 20, face = "bold"),
+    plot.caption = element_text(hjust = 0.5, size = 14, margin = margin(t = 10)),
+    plot.background = element_rect(fill = "transparent", colour = NA),
+    legend.background = element_rect(fill = "transparent", colour = NA),
+    legend.box.background = element_rect(fill = "transparent", colour = NA)
+  )
+
+final_plot
+# Save plot
+ggsave("PERMANOVA_R2_comparison_wrapped.png", final_plot, width = 14, height = 8, dpi = 300, bg = "transparent")
+
+
+```
+

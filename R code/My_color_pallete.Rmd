@@ -6,6 +6,7 @@ output: html_notebook
 
 ```{r}
 library(rcartocolor)
+library(scales)
 ```
 
 ```{r}
@@ -18,7 +19,7 @@ ind_palette <- c(
   "Dos"      = "#9BBB59",  # Green
   "Melanie"  = "#8064A2",  # Purple
   "Maia"     = "#4BACC6",  # Teal
-  "Jupyler"  = "#F79646",  # Orange
+  "Jupiler"  = "#F79646",  # Orange
   "Hugo"     = "#855D5D"   # Brown
 )
 
