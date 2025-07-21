@@ -1,0 +1,197 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyheatmaps)
+library(reshape2)
+library(RColorBrewer)
+library(vegan)
+library(FactoMineR)
+library(pheatmap)
+library(viridis)
+library(tidyheatmaps)
+library(ggridges)
+library(hrbrthemes)
+library(patchwork)
+library(stringr)
+```
+
+
+```{r}
+my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985","#8A9497",
+                  "#E8C09C","#AF4623", "#FE9549", "#007FB6","#CE9163",
+                  "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
+                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                  "#E37E00" , "#7B3014")
+
+ind_palette <- c("#4F81BD", "#C0504D", "#9BBB59", "#8064A2", "#4BACC6", "#D15821","#855D5D")
+
+
+ind_palette <- c(
+  "Isa"      = "#4F81BD",  # Blue
+  "Uno"      = "#C0504D",  # Red
+  "Dos"      = "#9BBB59",  # Green
+  "Melanie"  = "#8064A2",  # Purple
+  "Maia"     = "#4BACC6",  # Teal
+  "Jupiler"  = "#D15821",  # Orange
+  "Hugo"     = "#855D5D"   # Brown
+)
+
+season_palette <- c("Rain"= "#120976","Intermediate"="#8DA080","Dry"="#DAA520" )
+
+
+Howler_theme <- function() {
+  # Define color palettes
+  ind_palette <- c(
+    "Isa"      = "#4F81BD",  # Blue
+    "Uno"      = "#C0504D",  # Red
+    "Dos"      = "#9BBB59",  # Green
+    "Melanie"  = "#8064A2",  # Purple
+    "Maia"     = "#4BACC6",  # Teal
+    "Jupiler"  = "#D15821",  # Orange
+    "Hugo"     = "#855D5D"   # Brown
+  )
+  
+  my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985","#8A9497",
+                  "#E8C09C","#AF4623", "#FE9549", "#007FB6","#CE9163",
+                  "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
+                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                  "#E37E00" , "#7B3014")
+  
+  season_palette <- c(
+    "Rain" = "#120976",
+    "Intermediate" = "#8DA080",
+    "Dry" = "#DAA520"
+  )
+  
+  # Return the theme configuration
+  theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1,vjust = 1, size = 12, face = "bold"),
+      axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+      plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+      axis.title.x = element_text(size = 16, face = "bold"),
+      axis.title.y = element_text(size = 16, face = "bold"),
+      legend.title = element_text(size = 14, face = "bold"),
+      legend.text = element_text(size = 12, face = "bold"),
+      plot.subtitle = element_text(size = 12),
+      plot.caption = element_text(hjust = 0, face = "italic"),
+      legend.position = "top",
+      axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
+      axis.line.y = element_line(color = "#142D4A", linewidth = 0.8)
+    )
+}
+```
+
+
+```{r}
+setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/mpa")
+# genomad <- read_tsv( "genomad_taxonomy_all.tsv" )
+# genomad <- genomad %>% select(Sample, lineage)
+# 
+# 
+genomad
+metadata <- read.csv("howlermeta.csv")
+metadata
+```
+```{r}
+## how many unique lineages is each sample?
+
+unique_lineage_counts <- genomad %>%
+  group_by(Sample) %>%
+  summarise(n_unique = n_distinct(lineage))
+
+print(unique_lineage_counts)
+```
+```{r}
+genomad <- genomad %>%
+  mutate(lineage_clean = str_split_fixed(lineage, ";", n = 5)[, 5]) %>%
+  mutate(lineage_clean = str_trim(lineage_clean)) %>% select(Sample, lineage_clean)
+
+genomad
+```
+
+```{r}
+## how many hits for each unique taxa for each sample
+
+genomad_hits <- genomad %>%
+  filter(!is.na(lineage_clean) & lineage_clean != "") %>%
+  group_by(Sample, lineage_clean) %>%
+  summarise(hits = n(), .groups = "drop")
+
+genomad_hits
+```
+```{r}
+
+##  merge for plotting
+
+genomad_hits <- left_join(genomad_hits, metadata, by = c("Sample" = "SampleID"))
+
+genomad_hits
+
+
+```
+
+```{r}
+p1 <- 
+  ggplot(genomad_hits , aes(x = Sample, y = hits, fill = lineage_clean)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(
+    title = "Genomad Lineage Composition per Sample",
+    x = "Sample", y = "Hits", fill = "Lineage"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+p1
+
+ggsave("genomad_bar.png", plot = p1, width = 20, height = 14, dpi = 300)
+```
+```{r}
+#  pivot
+heat_data <- genomad_hits %>%
+  mutate(log_hits = log10(hits + 1)) %>%
+  select(Sample, lineage_clean, log_hits) %>%
+  pivot_wider(names_from = lineage_clean, values_from = log_hits, values_fill = 0)
+
+# to matrix
+heat_matrix <- as.matrix(heat_data[,-1])
+rownames(heat_matrix) <- heat_data$Sample
+
+#  annotations
+annotation_df <- genomad_hits %>%
+  select(Sample, Individual, Season) %>%
+  distinct() %>%
+  column_to_rownames("Sample")
+
+#  color 
+annotation_colors = list(
+  Season = c("Rain" = "#120976", "Intermediate" = "#8DA080", "Dry" = "#DAA520"),
+  Individual = c(
+    "Isa" = "#4F81BD", "Uno" = "#C0504D", "Dos" = "#9BBB59",
+    "Melanie" = "#8064A2", "Maia" = "#4BACC6", "Jupiler" = "#D15821", "Hugo" = "#855D5D"
+  )
+)
+
+
+pheatmap(
+  heat_matrix,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  main = "Log10 Transformed Lineage Hits",
+  fontsize = 16,               # <-- scales all text, including legend
+  fontsize_row = 14,
+  fontsize_col = 14,
+  annotation_row = annotation_df,
+  annotation_colors = annotation_colors,
+  filename = "genomad_heatmap.png",
+  width = 20,
+  height = 14
+)
+
+
+```
+
