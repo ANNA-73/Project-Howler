@@ -258,6 +258,7 @@ mean_abundance <- genus_rel_abund %>%
   arrange(desc(mean_abundance)) %>%
   head(10)  # Top 10 most abundant genera
 
+top10_genera <- mean_abundance$Classification[1:10]
 
 # Calculate abundance patterns across seasons for top 5 genera
 top5_genera <- mean_abundance$Classification[1:5]
@@ -521,6 +522,43 @@ p_common_core_s
 ```
 
 ```{r}
+### stack barplot, top10,  grouped by individual, facet
 
+individual_order <- c("Uno", "Dos", "Hugo", "Isa", "Jupiler", "Maia", "Melanie")
+Season_order <- c("Dry", "Intermidiate", "Rain")
+
+# Correctly set factor levels for Individual
+genus_rel_abund <- genus_rel_abund %>%
+  mutate(Individual = factor(Individual, levels = individual_order))
+
+# Arrange and reorder SampleID
+genus_rel_abund <- genus_rel_abund %>%
+  arrange(Individual, SampleID) %>%
+  mutate(SampleID = factor(SampleID, levels = unique(SampleID)))
+
+genus_top10 <- genus_rel_abund %>%
+  filter(Classification %in% top10_genera)
+
+stacked_faceted <- ggplot(genus_top10,
+  aes(x = SampleID, y = Relative_Abundance * 100, fill = Classification)) +
+  geom_col(width = 0.9, color = "white", linewidth = 0.15, position = "stack") +
+  scale_fill_manual(values = my_palette) +
+  labs(
+    title = "Stacked Bar Plot of Top 10 Most Abundant Genera",
+    x = "Sample ID",
+    y = "Relative Abundance (%)",
+    fill = "Genera"
+  ) +
+  facet_grid(. ~ Individual, scales = "free_x", space = "free_x") +
+  Howler_theme() +
+  theme(
+    strip.text = element_text(face = "bold", size = 12),
+    panel.spacing.x = unit(0.6, "lines"),
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+
+print(stacked_faceted)
+
+# ggsave(file.path(plot_dir, "Bracken_stackar_top10_G_Ind_ordered.jpg"),plot = stacked_faceted,width = 18,height = 14,dpi = 300)
 ```
 
