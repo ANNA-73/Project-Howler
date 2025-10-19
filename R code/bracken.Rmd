@@ -318,7 +318,8 @@ p2 <- ggplot(genus_rel_abund %>% filter(Classification %in% top5_genera),
     legend.position = "right",
     legend.key.size = unit(1, 'cm'),
     axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
-    axis.line.y = element_line(color = "#142D4A", linewidth = 0.8)
+    axis.line.y = element_line(color = "#142D4A", linewidth = 0.8),
+    strip.text = element_text(size = 12, face = "bold")
   )
 
 
@@ -475,12 +476,12 @@ p_common_core_g <- ggplot(common_g, aes(x = Classification, y = Relative_Abundan
     legend.position = "bottom",
     strip.text = element_text(size = 18, face = "bold", color = "black"),
     strip.background = element_rect(fill = "gray90", color = "gray20"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.text.x = element_text(size = 16,angle = 45, hjust = 1),
     axis.text.y = element_text(size = 14, face = "bold"),
     axis.title = element_text(size = 16, face = "bold"),
     plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
-    legend.title = element_text(size = 16, face = "bold"),
-    legend.text = element_text(size = 14)
+    legend.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 18)
   )
 
 
@@ -505,20 +506,20 @@ p_common_core_s <- ggplot(common_s, aes(x = Classification, y = Relative_Abundan
     legend.position = "bottom",
     strip.text = element_text(size = 18, face = "bold", color = "black"),
     strip.background = element_rect(fill = "gray90", color = "gray20"),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.text.y = element_text(size = 14, face = "bold"),
+    axis.text.x = element_text(size = 16,angle = 45, hjust = 1),
+    axis.text.y = element_text(size = 16, face = "bold"),
     axis.title = element_text(size = 16, face = "bold"),
     plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
-    legend.title = element_text(size = 16, face = "bold"),
-    legend.text = element_text(size = 14)
+    legend.title = element_text(size = 20, face = "bold"),
+    legend.text = element_text(size = 18)
   )
 p_common_core_s <- p_common_core_s +
   coord_cartesian(ylim = c(0, 20))
 
 p_common_core_s
 
-# ggsave(file.path(plot_dir, "common_core_g.jpg"),plot = p_common_core_g,width = 16,height = 14,dpi = 300)
-# ggsave(file.path(plot_dir, "common_core_s.jpg"),plot = p_common_core_s,width = 16,height = 14,dpi = 300)
+ggsave(file.path(plot_dir, "common_core_g.jpg"),plot = p_common_core_g,width = 24,height = 16,dpi = 300)
+ggsave(file.path(plot_dir, "common_core_s.jpg"),plot = p_common_core_s,width = 20,height = 16,dpi = 300)
 ```
 
 ```{r}
@@ -552,13 +553,24 @@ stacked_faceted <- ggplot(genus_top10,
   facet_grid(. ~ Individual, scales = "free_x", space = "free_x") +
   Howler_theme() +
   theme(
-    strip.text = element_text(face = "bold", size = 12),
-    panel.spacing.x = unit(0.6, "lines"),
-    axis.text.x = element_text(angle = 45, hjust = 1)
-  )
+  strip.text = element_text(face = "bold", size = 16),
+  panel.spacing.x = unit(0.6, "lines"),
+  axis.text.x  = element_blank(),       # hides sample labels
+  axis.ticks.x = element_blank(),       # optional: hide ticks too
+  axis.title.x = element_text(size = 18, face = "bold"),
+  axis.title.y = element_text(size = 18, face = "bold"),
+  legend.title = element_text(size = 16, face = "bold"),
+  legend.text  = element_text(size = 16)
+)
 
 print(stacked_faceted)
 
 ggsave(file.path(plot_dir, "Bracken_stackar_top10_G_Ind_ordered.jpg"),plot = stacked_faceted,width = 18,height = 14,dpi = 300)
+```
+```{r}
+
+
+
+
 ```
 
