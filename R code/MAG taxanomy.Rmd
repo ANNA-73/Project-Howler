@@ -93,7 +93,7 @@ Howler_theme <- function() {
 
 
 ```{r}
-setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/R code")
+setwd("C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/R code")
 
 bin_taxa <- read_tsv("gtdbtk.bac120.summary.tsv")
 bin_taxa
@@ -612,5 +612,133 @@ heat_map <- pheatmap(
   
 ggsave('MAGs_heatmap.png', heat_map, width = 16, height = 10)  
 
+```
+```{r}
+library(tidyverse)
+library(ggsankey)
+
+# Extract all taxonomic levels from classification
+bin_taxa_sankey <- bin_taxa %>%
+  mutate(
+    domain = str_extract(classification, "(?<=d__)[^;]+"),
+    phylum = str_extract(classification, "(?<=p__)[^;]+"),
+    class = str_extract(classification, "(?<=c__)[^;]+"),
+    order = str_extract(classification, "(?<=o__)[^;]+"),
+    family = str_extract(classification, "(?<=f__)[^;]+"),
+    genus = str_extract(classification, "(?<=g__)[^;]+")
+  ) %>%
+  # Replace NAs with "Unknown"
+  mutate(across(domain:genus, ~replace_na(., "Unknown")))
+
+# Create long format for Sankey
+sankey_data <- bin_taxa_sankey %>%
+  select(domain, phylum, class, order, family, genus) %>%
+  make_long(domain, phylum, class, order, family, genus)
+
+# Create the Sankey 
+
+p_sankey_1 <-
+  ggplot(sankey_data, aes(x = x, 
+                        next_x = next_x, 
+                        node = node, 
+                        next_node = next_node,
+                        fill = factor(node))) +
+  geom_sankey(flow.alpha = 0.5, node.color = "gray30", smooth = 8) +
+  geom_sankey_label(size = 3, color = "white", fill = "gray40", aes(label = node)) +
+  scale_fill_viridis_d(option = "turbo", drop = FALSE) +
+  theme_sankey(base_size = 16) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
+  labs(x = "Taxonomic Level",
+       y = "Number of MAGs",
+       title = "Taxonomic Classification Flow of Metagenome-Assembled Genomes") +
+  scale_x_discrete(labels = c("Domain", "Phylum", "Class", "Order", "Family", "Genus"))
+
+# Alternative: Focus on specific levels (e.g., Phylum -> Family -> Genus)
+sankey_simplified <- bin_taxa_sankey %>%
+  select(phylum, family, genus) %>%
+  make_long(phylum, family, genus)
+
+p_sankey_2 <-
+  ggplot(sankey_simplified, aes(x = x, 
+                              next_x = next_x, 
+                              node = node, 
+                              next_node = next_node,
+                              fill = factor(node))) +
+  geom_sankey(flow.alpha = 0.6, node.color = "gray30", smooth = 8) +
+  geom_sankey_label(size = 3.5, color = "white", fill = "gray40", aes(label = node)) +
+  scale_fill_viridis_d(option = "plasma", drop = FALSE) +
+  theme_sankey(base_size = 16) +
+  theme(legend.position = "none") +
+  labs(x = "Taxonomic Level",
+       y = "Number of MAGs",
+       title = "Simplified Taxonomic Flow: Phylum → Family → Genus") +
+  scale_x_discrete(labels = c("Phylum", "Family", "Genus"))
+
+# Option 3: Include sample information
+sankey_with_sample <- bin_taxa_sankey %>%
+  select(sample, phylum, family, genus) %>%
+  make_long(sample, phylum, family, genus)
+
+# For this plot, you might want to filter to top samples if you have 98
+top_samples <- bin_taxa_sankey %>%
+  count(sample, sort = TRUE) %>%
+  head(10) %>%
+  pull(sample)
+
+sankey_sample_all <- bin_taxa_sankey %>%
+  select(sample, phylum, family, genus) %>%
+  make_long(sample, phylum, family, genus)
+
+sankey_sample_filtered <- bin_taxa_sankey %>%
+  filter(sample %in% top_samples) %>%
+  select(sample, phylum, family, genus) %>%
+  make_long(sample, phylum, family, genus)
+
+
+
+p_sankey_3 <-
+  ggplot(sankey_sample_all, aes(
+    x = x,
+    next_x = next_x,
+    node = node,
+    next_node = next_node,
+    fill = factor(node)
+  )) +
+  geom_sankey(flow.alpha = 0.5, node.color = "gray30", smooth = 8) +
+  
+  # Only label nodes that are NOT from the "Sample" column
+  geom_sankey_label(
+    data = function(d) d %>% dplyr::filter(x != "sample"),
+    aes(label = node),
+    size = 4,
+    color = "white",
+    fill = "gray40"
+  ) +
+  
+  scale_fill_viridis_d(option = "viridis", drop = FALSE) +
+  theme_sankey(base_size = 18) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(size = 18, face = "bold"),
+    axis.text.y = element_blank(),
+    plot.title = element_text(size = 20, face = "bold", hjust = 0.5),
+    axis.title.y = element_text(size = 18, face = "bold")
+  ) +
+  labs(
+    x = NULL,
+    y = "Number of MAGs",
+    title = "All samples Vs. All MAGs"
+  ) +
+  scale_x_discrete(labels = c("Sample", "Phylum", "Family", "Genus"))
+
+p_sankey_3
+
+
+  
+
+plot_dir <- "C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/plots"
+
+ggsave(file.path(plot_dir, "MAGs_sankey.jpg"),plot = p_sankey_3, width = 22, height = 18, dpi = 300)
 ```
 
