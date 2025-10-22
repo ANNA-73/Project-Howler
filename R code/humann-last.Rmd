@@ -17,13 +17,87 @@ library(viridis)
 library(tidyheatmaps)
 library(ggridges)
 library(hrbrthemes)
+library(grid)
+library(gridExtra)
+library(ComplexHeatmap)
 
 ```
 
 ```{r}
+my_palette <- c("#C16622", "#7497CD","#800000" , "#58593F","#AF7CA1", "#155F83",
+                  "#8DAB8E","#AF4623", "#FE9549", "#2A9EB5","#CE9163",
+                  "#A3435B", "#7E5400","#2C5985","#9C6A6A", "#9C4B46", 
+                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                  "#E37E00" , "#8478CD")
+
+ind_palette <- c("#4F81BD", "#C0504D", "#9BBB59", "#8064A2", "#4BACC6", "#D15821","#855D5D")
+
+
+ind_palette <- c(
+  "Isa"      = "#4F81BD",  # Blue
+  "Uno"      = "#C0504D",  # Red
+  "Dos"      = "#9BBB59",  # Green
+  "Melanie"  = "#8064A2",  # Purple
+  "Maia"     = "#4BACC6",  # Teal
+  "Jupiler"  = "#D15821",  # Orange
+  "Hugo"     = "#855D5D"   # Brown
+)
+
+season_palette <- c("Rain"= "#120976","Intermediate"="#8DA080","Dry"="#DAA520" )
+
+
+Howler_theme <- function() {
+  # Define color palettes
+  ind_palette <- c(
+    "Isa"      = "#4F81BD",  # Blue
+    "Uno"      = "#C0504D",  # Red
+    "Dos"      = "#9BBB59",  # Green
+    "Melanie"  = "#8064A2",  # Purple
+    "Maia"     = "#4BACC6",  # Teal
+    "Jupiler"  = "#D15821",  # Orange
+    "Hugo"     = "#855D5D"   # Brown
+  )
+  
+  my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985","#8A9497",
+                  "#E8C09C","#AF4623", "#FE9549", "#007FB6","#CE9163",
+                  "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
+                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                  "#E37E00" , "#7B3014")
+  
+  season_palette <- c(
+    "Rain" = "#120976",
+    "Intermediate" = "#8DA080",
+    "Dry" = "#DAA520"
+  )
+  
+  # Return the theme configuration
+  theme_classic() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1,vjust = 1, size = 12, face = "bold"),
+      axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
+      plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+      axis.title.x = element_text(size = 16, face = "bold"),
+      axis.title.y = element_text(size = 16, face = "bold"),
+      legend.title = element_text(size = 14, face = "bold"),
+      legend.text = element_text(size = 12, face = "bold"),
+      legend.key.height = unit(1.2, "cm"),   # increase vertical length of color bar
+      legend.key.width  = unit(0.5, "cm"),   # adjust width (for vertical colorbars)
+      legend.margin     = margin(t = 5, b = 5, l = 5, r = 10),     # breathing room
+      legend.box.margin = margin(10, 10, 10, 10) ,
+      plot.subtitle = element_text(size = 12),
+      plot.caption = element_text(hjust = 0, face = "italic"),
+      legend.position = "top",
+      axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
+      axis.line.y = element_line(color = "#142D4A", linewidth = 0.8)
+    )
+}
+```
+
+
+```{r}
 ## we're using unstratified pathway output here
 
-setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/humaan")
+setwd("C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/humaan")
 path_data <- read_tsv("unstratified_pathabundance.txt")
 
 ## Filtering out UNMAPPED and UNINTEGRATED
@@ -87,21 +161,6 @@ permanova_individual_pw <- adonis2(bray_curtis_matrix ~ Individual, data = metad
 permanova_age_pw <- adonis2(bray_curtis_matrix ~ Age, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
 permanova_reproductive_pw <- adonis2(bray_curtis_matrix ~ Reproductive, data = metadata_ordered , strata = metadata_ordered$Individual, permutations = 999)
 
-# Print results
-print("PERMANOVA results for Season:")
-print(permanova_season_pw)
-print("\
-PERMANOVA results for Sex:")
-print(permanova_sex_pw)
-print("\
-PERMANOVA results for Individual:")
-print(permanova_individual_pw)
-print("\
-PERMANOVA results for age:")
-print(permanova_age_pw)
-print("\
-PERMANOVA results for reproductive:")
-print(permanova_reproductive_pw)
 
 # Extract R-squared values and p-values
 r2_values_pw <- c(permanova_season_pw$R2[1], permanova_individual_pw$R2[1], permanova_sex_pw$R2[1], permanova_age_pw$R2[1],
@@ -116,6 +175,9 @@ pw_permanova_results <- data.frame(
   P_value_pw = p_values_pw  # Replace with actual p_values for pw_permanova_results
 )
 pw_permanova_results
+
+# write.csv(pw_permanova_results, "Unstrat_humann_PERMANOVA_2.csv", row.names = FALSE)
+
 # Create a bar plot using ggplot2
 library(ggplot2)
 
@@ -134,7 +196,7 @@ p = %.3f", R2_pw, P_value_pw)),
     ylim(0, max(pw_permanova_results$R2_pw) * 1.2)  # Add some space for the labels
 
 # Save the plot
-ggsave("humaan_permanova_results.png", p, width = 10, height = 6, dpi = 300)
+# ggsave("humaan_permanova_results.png", p, width = 10, height = 6, dpi = 300)
 
 # Display the plot
 print(p)
@@ -162,28 +224,61 @@ seasonal_patterns <- tidy_data %>%
 
 top5_genera
 
-# Create a bar plot of top 10 most abundant genera
-p1 <- ggplot(mean_abundance, aes(x = reorder(Pathway, mean_abundance), y = mean_abundance* 100)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
+
+p1 <- ggplot(mean_abundance, aes(y = reorder(Pathway, mean_abundance), x = mean_abundance * 100, fill = Pathway)) +
+  geom_bar(stat = "identity", fill = "#2C5985", width = 0.7) +  
   coord_flip() +
   theme_minimal() +
-  labs(title = "Top 10 Most Abundant Genera",
-       x = "Genus",
-       y = "Mean Relative Abundance (%)")
+  labs(title = "Top 10 Most Abundant RXN",
+       x = "Mean Relative Abundance (%)",
+       y = "RXn") +
+  theme_classic(base_size = 14, base_family = "sans") +
+  theme(
+    plot.title = element_text(
+      hjust = 0.5, size = 20, face = "bold", margin = margin(b = 15)
+    ),
+    axis.title.x = element_text(size = 16, face = "bold", margin = margin(t = 10)),
+    axis.title.y = element_text(size = 16, face = "bold", margin = margin(r = 10)),
+    axis.text.x = element_text(size = 12, angle = 45, hjust = 1, vjust = 1, color = "black"),
+    axis.text.y = element_text(size = 12, color = "black", face = "bold"),
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.minor = element_blank(),
+    axis.line = element_line(color = "black", linewidth = 0.8),
+    plot.margin = margin(10, 15, 10, 10)
+  )
 
 # Create a faceted box plot for seasonal patterns
 p2 <- ggplot(tidy_data %>% filter(Pathway %in% top5_genera), 
-             aes(x = Season, y = Relative_Abundance*100 , fill = Season)) +
+             aes(x = Season, y = Relative_Abundance * 100, fill = Season)) +
   geom_boxplot() +
-  scale_fill_brewer(palette = "Dark2") +
+  geom_jitter(width = 0.2, alpha = 0.3, size = 1.2) +
+  scale_fill_manual(values = season_palette) +  # Assign the first 4 colors to Seasons
   facet_wrap(~Pathway, scales = "free_y") +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Seasonal Distribution of Top 5 Most Abundant Genera",
-       y = "Relative Abundance (%)")
+  labs(title = "Seasonal Distribution of Top 5 Most Abundant Pathways",
+       y = "Relative Abundance (%)") +
+  theme_classic() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 10, face = "bold"),
+    plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
+    axis.title.x = element_text(size = 18, face = "bold"),
+    axis.title.y = element_text(size = 18, face = "bold"),
+    legend.title = element_text(size = 14, face = "bold"),
+    legend.text = element_text(size = 12, face = "bold"),
+    plot.subtitle = element_text(size = 12),
+    plot.caption = element_text(hjust = 0, face = "italic"),
+    legend.position = "right",
+    legend.key.size = unit(1, 'cm'),
+    axis.line.x = element_line(color = "#142D4A", linewidth = 0.8),
+    axis.line.y = element_line(color = "#142D4A", linewidth = 0.8),
+    strip.text = element_text(size = 12, face = "bold")
+  )
 
 # Print summary statistics
-print("Summary of top 5 genera abundance by season:")
+print("Summary of top 5 Pathways abundance by season:")
 seasonal_summary <- tidy_data %>%
   filter(Pathway %in% top5_genera) %>%
   group_by(Season, Pathway) %>%
@@ -197,164 +292,299 @@ seasonal_summary <- tidy_data %>%
 # Display the plots
 print(p1)
 print(p2)
-# ggsave("Top 10 Most Abundant Genera.jpg", plot = p1, width = 6, height = 4, dpi = 300)
-# ggsave("Seasonal Distribution of Top 5 Most Abundant Genera.jpg", plot = p2, width = 6, height = 4, dpi = 300)
 
-
-```
-```{r}
-##Is there such a thing as core function? prevalence at 90%
-
-# Calculate presence/absence for each function per individual
-core_function <- tidy_data %>%
-  group_by(Individual, Pathway) %>%
-  summarize(
-    Prevalence = n_distinct(SampleID[Relative_Abundance > 0]) / n_distinct(SampleID) * 100,
-    Mean_Abundance = mean(Relative_Abundance, na.rm = TRUE),
-    SD_Abundance = sd(Relative_Abundance, na.rm = TRUE)
-  ) %>%
-  ungroup()
-
-# Filter for core function (present in >90% of samples)
-core_function_filtered <- core_function %>%
-  filter(Prevalence >= 90) %>%
-  arrange(Individual, desc(Mean_Abundance))
-
-
-
-# Print the first few rows to check
-print("Core function summary:")
-print(dim(core_function_filtered))
-print(head(core_function_filtered))
-
-# write.csv(core_function_filtered, file = "core_genera_filtered.csv", row.names = FALSE)
-
+plot_dir <- "C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/plots"
+# Save high-resolution output
+# ggsave (file.path(plot_dir, "Top_10_RXN.jpg"),plot = p1, width = 14, height = 12, dpi = 300)
+# ggsave(file.path(plot_dir, "Seasonal_Distribution_of_Top_5_Most_Abundant_Pathways.jpg"), plot = p2, width = 18, height = 8, dpi = 300)
 
 ```
 ```{r}
-# Calculate mean abundance for each pathway
-pathway_means <- colMeans(heatmap_data[,-1])  # exclude SampleID column
-top_10_pathways <- names(sort(pathway_means, decreasing = TRUE))[1:10]
+##heatmap all vs all
 
-# Filter for top 10 pathways
-heatmap_matrix <- as.matrix(heatmap_data[, c(top_10_pathways)])
-rownames(heatmap_matrix) <- heatmap_data$SampleID
+heatmap_matrix <- as.matrix(wide_data)
+heatmap_matrix <- t(heatmap_matrix)
+pathway_means <- rowMeans(heatmap_matrix)
+#No zero
+heatmap_matrix_filtered <- heatmap_matrix[pathway_means > 0.001, ]
+heatmap_matrix_filtered <- heatmap_matrix_filtered * 100
 
-# Convert to percentage
-heatmap_matrix_percent <- heatmap_matrix * 100
 
-# Create annotation data frame
-row_annotation <- metadata[match(rownames(heatmap_matrix), metadata$SampleID), 
-                         c("Sex", "Age", "Reproductive", "Individual", "Season")]
-rownames(row_annotation) <- metadata$SampleID[match(rownames(heatmap_matrix), metadata$SampleID)]
+sample_annotation <- metadata_ordered %>%
+  select(Season, Individual) %>%
+  as.data.frame()
+rownames(sample_annotation) <- metadata_ordered$SampleID
 
-# Define annotation colors
+
 annotation_colors <- list(
-  Sex = c(Male = "#1f77b4", Female = "#ff7f0e"),
-  Age = c(Juvenile = "#2ca02c", Subadult = "#d62728", Adult = "#9467bd"),
-  Reproductive = c("Not pregnant" = "#8c564b", Lactating = "#e377c2", Pregnant = "#7f7f7f"),
-  Individual = c(Dos = "#bcbd22", Hugo = "#17becf", Isa = "#ff9896", 
-                Jupiler = "#c5b0d5", Maia = "#c49c94", Melanie = "#f7b6d2", 
-                Uno = "#dbdb8d"),
-  Season = c(Rain = "#9edae5", Intermediate = "#ffbb78", Dry = "#98df8a")
+  Season = season_palette,      
+  Individual = ind_palette      
+)
+
+pheatmap(heatmap_matrix_filtered,
+         annotation_col = sample_annotation,
+         annotation_colors = annotation_colors,
+         color = viridis(100),  #
+         scale = "none",  # Scale by row (pathway) to show relative patterns
+         clustering_distance_rows = "correlation",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete",
+         show_rownames = FALSE,  
+         show_colnames = FALSE,  
+         fontsize_row = 6,
+         fontsize_col = 8,
+         main = "Pathway Abundance Heatmap Across All Samples",
+         border_color = NA)
+
+```
+```{r}
+
+
+# Order samples by Individual
+sample_order <- metadata_ordered %>%
+  arrange(Individual, Season) %>%
+  pull(SampleID)
+
+heatmap_matrix_ordered <- heatmap_matrix_filtered[, sample_order]
+sample_annotation_ordered <- sample_annotation[sample_order, ]
+
+# Create column annotation 
+col_ann <- HeatmapAnnotation(
+  Season = sample_annotation_ordered$Season,
+  Individual = sample_annotation_ordered$Individual,
+  col = annotation_colors,
+  show_annotation_name = TRUE,
+  annotation_name_side = "left",
+  annotation_name_gp = gpar(fontsize = 10, fontface = "bold"),
+  simple_anno_size = unit(0.5, "cm"),
+  gp = gpar(col = "black", lwd = 0.5)
 )
 
 # Create the heatmap
-p5 <- 
-  pheatmap(heatmap_matrix_percent,
-         annotation_row = row_annotation,
-         annotation_colors = annotation_colors,
-         show_rownames = TRUE,
-         show_colnames = TRUE,
-         cluster_rows = TRUE,
-         cluster_cols = TRUE,
-         scale = "none",
-         fontsize_row = 8,
-         fontsize_col = 6,
-         angle_col = 45 ,
-         color = inferno(100),
-         main = "Top 10 Pathways - Relative Abundance (%)")
+ht <- Heatmap(
+  heatmap_matrix_ordered,
+  name = "Relative\nAbundance%",  # Legend title
+  col = viridis(100),
+  
+  # Column settings
+  top_annotation = col_ann,
+  cluster_columns = FALSE,
+  show_column_names = FALSE,
+  column_split = sample_annotation_ordered$Individual,  # Creates gaps between individuals
+  column_gap = unit(1, "mm"),  # Gap size
+  column_title = NULL,  # Remove individual column titles
+  
+  # Row settings
+  cluster_rows = TRUE,
+  clustering_distance_rows = "pearson",  # correlation equivalent
+  clustering_method_rows = "complete",
+  show_row_names = FALSE,
+  row_names_gp = gpar(fontsize = 6),
+  
+  # Legend settings
+  heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 10, fontface = "bold"),
+    labels_gp = gpar(fontsize = 8),
+    legend_height = unit(4, "cm"),
+    legend_direction = "vertical"
+  ),
+  
+  # Border
+  border = TRUE,
+  border_gp = gpar(col = "black", lwd = 1),
+   rect_gp = gpar(col = "black", lwd = 0.2)
+)
 
-# ggsave("Heatmap of Top 10 Pathways-unstratified.jpg", plot = p5, width = 12, height = 10, dpi = 300)
+
+draw(ht, 
+     column_title = "Pathway Abundance Heatmap Across All Samples",
+     column_title_gp = gpar(fontsize = 14, fontface = "bold"),
+     heatmap_legend_side = "right",
+     annotation_legend_side = "right")
+
+
+# png(file.path(plot_dir, "pathway_heatmap_by_individual.png"), width = 3600, height = 3000, res = 300)
+# draw(ht, 
+#      column_title = "Pathway Abundance Heatmap Across All Samples)",
+#      column_title_gp = gpar(fontsize = 14, fontface = "bold"),
+#      heatmap_legend_side = "right",
+#      annotation_legend_side = "right")
+# dev.off()
+```
+
+```{r}
+###heatmap of top20
+pathway_abundance <- tidy_data %>%
+  group_by(Pathway) %>%
+  summarize(mean_abundance = mean(Relative_Abundance)) %>%
+  arrange(desc(mean_abundance)) %>%
+  head(20)  # Top 20 most abundant pathways
+
+top20_pathways <- pathway_abundance$Pathway
+
+# Filter the matrix to only include top 20 pathways
+heatmap_matrix_top20 <- heatmap_matrix_filtered[rownames(heatmap_matrix_filtered) %in% top20_pathways, ]
+
+# Prepare annotation (no reordering needed, will follow clustering)
+sample_annotation <- metadata_ordered %>%
+  select(Season, Individual) %>%
+  as.data.frame()
+rownames(sample_annotation) <- metadata_ordered$SampleID
+
+# Create column annotation with borders
+col_ann <- HeatmapAnnotation(
+  Season = sample_annotation$Season,
+  Individual = sample_annotation$Individual,
+  col = annotation_colors,
+  show_annotation_name = TRUE,
+  annotation_name_side = "left",
+  annotation_name_gp = gpar(fontsize = 10, fontface = "bold"),
+  simple_anno_size = unit(0.5, "cm"),
+  gp = gpar(col = "black", lwd = 0.5)
+)
+
+# Create the heatmap with clustering
+ht_top20 <- Heatmap(
+  heatmap_matrix_top20,
+  name = "% Relative\nAbundance",
+  col = magma(100),
+  
+  # Column settings - ENABLE CLUSTERING
+  top_annotation = col_ann,
+  cluster_columns = TRUE,  # Changed to TRUE
+  clustering_distance_columns = "euclidean",
+  clustering_method_columns = "complete",
+  show_column_names = FALSE,
+  show_column_dend = TRUE,  # Show dendrogram
+  column_dend_height = unit(2, "cm"),  # Dendrogram height
+  
+  # Row settings
+  cluster_rows = TRUE,
+  clustering_distance_rows = "pearson",
+  clustering_method_rows = "complete",
+  show_row_names = FALSE,
+  row_names_gp = gpar(fontsize = 8, fontface = "bold"),
+  row_names_side = "left",
+  show_row_dend = TRUE,
+  row_dend_width = unit(2, "cm"),
+  
+  # Legend settings
+  heatmap_legend_param = list(
+    title_gp = gpar(fontsize = 10, fontface = "bold"),
+    labels_gp = gpar(fontsize = 8),
+    legend_height = unit(4, "cm"),
+    legend_direction = "vertical"
+  ),
+  
+  # Borders
+  border = TRUE,
+  border_gp = gpar(col = "black", lwd = 3),
+  rect_gp = gpar(col = "black", lwd = 0.5)
+)
+
+# Draw with title
+draw(ht_top20, 
+     column_title = "Top 20 Most Abundant Pathways Across All Samples (Hierarchical Clustering)",
+     column_title_gp = gpar(fontsize = 14, fontface = "bold"),
+     heatmap_legend_side = "right",
+     annotation_legend_side = "right")
 
 ```
 ```{r}
+
+```
+```{r}
+
+```
+
+
+```{r}
 ## let's calculate the temporal dynamics
-setwd("C:/Users/Owner/Desktop/Project-Howler (2) (2)/Project-Howler (2) (2)/Project-Howler/humaan")
+setwd("C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/humaan")
 bc_matrix <- read_tsv("bray_curtis_matrix_unstratified_pw.txt")
 bc_matrix_numeric <- bc_matrix[, -1]
-pcoa_result <- cmdscale(bc_matrix_numeric, eig = TRUE, k = 2)
+pcoa_result_pw <- cmdscale(bc_matrix_numeric, eig = TRUE, k = 2)
 
 # Create a dataframe for plotting
-pcoa_df <- data.frame(
-  PCoA1 = pcoa_result$points[,1],
-  PCoA2 = pcoa_result$points[,2],
+pcoa_df_pw <- data.frame(
+  PCoA1 = pcoa_result_pw$points[,1],
+  PCoA2 = pcoa_result_pw$points[,2],
   Season = metadata$Season,
   Individual = metadata$Individual
 )
 
-pcoa_points <- data.frame(
+pcoa_points_pw <- data.frame(
   SampleID = rownames(wide_data),
-  PCo1 = pcoa_result$points[,1],
-  PCo2 = pcoa_result$points[,2]
+  PCo1 = pcoa_result_pw$points[,1],
+  PCo2 = pcoa_result_pw$points[,2]
 )
 
 # Calculate variance explained
-variance_explained <- round(100 * pcoa_result$eig / sum(pcoa_result$eig), 2)
+variance_explained <- round(100 * pcoa_result_pw$eig / sum(pcoa_result_pw$eig), 2)
 
 # Merge with metadata
-pcoa_data <- merge(pcoa_points, metadata, by="SampleID")
+pcoa_data_pw <- merge(pcoa_points, metadata, by="SampleID")
 
 # Plot PCoA results by Season
-p1 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Season)) +
+p1 <- ggplot(pcoa_df_pw, aes(x = PCoA1, y = PCoA2,  color = Season)) +
   geom_point(size = 3, alpha = 0.6) +
   theme_minimal() +
   labs(
-    title = "PCoA of Gut Microbiome Composition by Season",
+    title = "PCoA of Gut Microbiome Pathways by Season",
     x = "PCoA1",
     y = "PCoA2"
   ) +
-  stat_ellipse(level = 0.95)
+  stat_ellipse(level = 0.95) +
+  scale_color_brewer(palette = "Dark2")
 
 # Plot PCoA results by Individual
-p2 <- ggplot(pcoa_df, aes(x = PCoA1, y = PCoA2, color = Individual)) +
+p2 <- ggplot(pcoa_df_pw, aes(x = PCoA1, y = PCoA2, color = Individual)) +
   geom_point(size = 3, alpha = 0.6) +
   theme_minimal() +
   labs(
-    title = "PCoA of Gut Microbiome Composition by Individual",
+    title = "PCoA of Gut Microbiome Pathways by Individual",
     x = "PCoA1",
     y = "PCoA2"
-  )
+  ) +
+  stat_ellipse(level = 0.95) +
+  scale_color_brewer(palette = "Dark2")
 
 # Print plots
 print(p1)
 print(p2)
+# ggsave("PCoA of Gut Microbiome Pathways by Season.jpg", plot = p1, width = 12, height = 10, dpi = 300)
+# ggsave("PCoA of Gut Microbiome Pathways by Individual.jpg", plot = p2, width = 12, height = 10, dpi = 300)
+
 ```
 ```{r}
+
+```
+
+```{r}
 # Ensure Month is a factor with the correct chronological order
-month_levels <- c("October", "November", "December", "January", "February", "March", 
-                  "April", "May", "June", "July", "August", "September")
+month_levels <- c("September","October", "November", "December", "January", "February", "March", 
+                  "April", "May", "June", "July", "August" )
 metadata$Month <- factor(metadata$Month, levels = month_levels)
 
 # Merge PCoA results with metadata
-pcoa_data <- merge(pcoa_points, metadata, by = "SampleID")
+pcoa_data_pw <- merge(pcoa_points_pw, metadata, by = "SampleID")
 
 # Sort the data by Individual and Month
-pcoa_data <- pcoa_data[order(pcoa_data$Individual, pcoa_data$Month), ]
+pcoa_data_pw <- pcoa_data_pw[order(pcoa_data_pw$Individual, pcoa_data_pw$Month), ]
 
 # Calculate the absolute change in PCo1 for each individual across months and replace NA with 0
-pcoa_data$PCo1_diff <- ave(pcoa_data$PCo1, pcoa_data$Individual, 
+pcoa_data_pw$PCo1_diff <- ave(pcoa_data_pw$PCo1, pcoa_data_pw$Individual, 
                            FUN = function(x) c(0, abs(diff(x))))
 
 # View the resulting dataframe
-print(head(pcoa_data))
+print(head(pcoa_data_pw))
 # write.table(pcoa_data , "pcoa_data_pw_unstratified.csv", sep=",", row.names = TRUE, col.names = TRUE)
 
 ```
 
 ```{r}
 ##we have multiple samples for each month, lets get mean pco1 for each
-agg_data_pw <- pcoa_data %>%
+agg_data_pw <- pcoa_data_pw %>%
   group_by(Individual, Month) %>%
   summarise(PCo1 = mean(PCo1, na.rm = TRUE)) %>%
   arrange(Individual, Month)

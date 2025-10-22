@@ -1,0 +1,20 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(readr)
+```
+
+
+
+```{r}
+setwd("C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/R code")
+
+
+ANI <- read_tsv("fastANI_results")
+
+ANI
+```
+
