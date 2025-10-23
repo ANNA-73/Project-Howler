@@ -19,8 +19,11 @@ library(hrbrthemes)
 library(pals)
 library(tidytext) 
 ```
+
+
 ```{r}
-## coherent color pallets
+### define my costum theme for plotting, I'll be using this for other plots in other notebooks as well
+# Define palettes globally (outside the function)
 ind_palette <- c(
   "Isa"      = "#4F81BD",  # Blue
   "Uno"      = "#C0504D",  # Red
@@ -31,47 +34,23 @@ ind_palette <- c(
   "Hugo"     = "#855D5D"   # Brown
 )
 
-season_palette <- c("Rain"= "#120976","Intermediate"="#8DA080","Dry"="#DAA520" )
-
-## for other categorical colors like taxa
-
 my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
-                    "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
-                    "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", "#3C5941",
-                    "#3D3178",  "#81807C", "#374E55", "#E37E00" , "#7B3014")
+                "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
+                "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
+                "#3C5941","#3D3178",  "#81807C", "#374E55", 
+                "#E37E00" , "#7B3014")
 
-```
+season_palette <- c(
+  "Rain" = "#120976",
+  "Intermediate" = "#8DA080",
+  "Dry" = "#DAA520"
+)
 
-```{r}
-### define my costum theme for plotting, I'll be using this for other plots in other notebooks as well
+# Now define the theme function
 Howler_theme <- function() {
-  # Define color palettes
-  ind_palette <- c(
-    "Isa"      = "#4F81BD",  # Blue
-    "Uno"      = "#C0504D",  # Red
-    "Dos"      = "#9BBB59",  # Green
-    "Melanie"  = "#8064A2",  # Purple
-    "Maia"     = "#4BACC6",  # Teal
-    "Jupiler"  = "#F79646",  # Orange
-    "Hugo"     = "#855D5D"   # Brown
-  )
-  
-  my_palette <- c("#AF7CA1", "#BCE4D8", "#3480A2", "#2C5985",
-                  "#F3ABA4", "#FE9549", "#007FB6","#CE9163",
-                  "#A3435B", "#7E5400","#9C6A6A", "#9C4B46", 
-                  "#3C5941","#3D3178",  "#81807C", "#374E55", 
-                  "#E37E00" , "#7B3014")
-  
-  season_palette <- c(
-    "Rain" = "#120976",
-    "Intermediate" = "#8DA080",
-    "Dry" = "#DAA520"
-  )
-  
-  # Return the theme configuration
   theme_gray() +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1,vjust = 1, size = 12, face = "bold"),
+      axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 12, face = "bold"),
       axis.text.y = element_text(angle = 0, hjust = 1, size = 14, face = "bold"),
       plot.title = element_text(hjust = 0.5, size = 20, face = "bold"),
       axis.title.x = element_text(size = 16, face = "bold"),
@@ -613,6 +592,8 @@ heat_map <- pheatmap(
 ggsave('MAGs_heatmap.png', heat_map, width = 16, height = 10)  
 
 ```
+
+
 ```{r}
 library(tidyverse)
 library(ggsankey)
@@ -627,95 +608,108 @@ bin_taxa_sankey <- bin_taxa %>%
     family = str_extract(classification, "(?<=f__)[^;]+"),
     genus = str_extract(classification, "(?<=g__)[^;]+")
   ) %>%
-  # Replace NAs with "Unknown"
   mutate(across(domain:genus, ~replace_na(., "Unknown")))
 
-# Create long format for Sankey
-sankey_data <- bin_taxa_sankey %>%
-  select(domain, phylum, class, order, family, genus) %>%
-  make_long(domain, phylum, class, order, family, genus)
+# ============================================================
+# KEY STEP: Create unique labels by combining with parent phylum
+# ============================================================
 
-# Create the Sankey 
+bin_taxa_sankey <- bin_taxa_sankey %>%
+  mutate(
+    # Create unique identifiers for sorting purposes
+    family_unique = paste0(phylum, "_", family),
+    genus_unique = paste0(phylum, "_", genus)
+  )
 
-p_sankey_1 <-
-  ggplot(sankey_data, aes(x = x, 
-                        next_x = next_x, 
-                        node = node, 
-                        next_node = next_node,
-                        fill = factor(node))) +
-  geom_sankey(flow.alpha = 0.5, node.color = "gray30", smooth = 8) +
-  geom_sankey_label(size = 3, color = "white", fill = "gray40", aes(label = node)) +
-  scale_fill_viridis_d(option = "turbo", drop = FALSE) +
-  theme_sankey(base_size = 16) +
-  theme(legend.position = "none",
-        axis.text.x = element_text(angle = 0, hjust = 0.5)) +
-  labs(x = "Taxonomic Level",
-       y = "Number of MAGs",
-       title = "Taxonomic Classification Flow of Metagenome-Assembled Genomes") +
-  scale_x_discrete(labels = c("Domain", "Phylum", "Class", "Order", "Family", "Genus"))
+# Create ordering based on unique identifiers
+family_order <- bin_taxa_sankey %>%
+  group_by(phylum, family_unique) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  arrange(phylum, desc(n)) %>%
+  pull(family_unique)
 
-# Alternative: Focus on specific levels (e.g., Phylum -> Family -> Genus)
+genus_order <- bin_taxa_sankey %>%
+  group_by(phylum, genus_unique) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  arrange(phylum, desc(n)) %>%
+  pull(genus_unique)
+
+# Apply ordering
+bin_taxa_sankey <- bin_taxa_sankey %>%
+  mutate(
+    family_unique = factor(family_unique, levels = family_order),
+    genus_unique = factor(genus_unique, levels = genus_order)
+  )
+
+# ============================================================
+# Option 1: Use unique identifiers in the plot (shows phylum context)
+# ============================================================
+
 sankey_simplified <- bin_taxa_sankey %>%
-  select(phylum, family, genus) %>%
-  make_long(phylum, family, genus)
+  select(phylum, family_unique, genus_unique) %>%
+  make_long(phylum, family_unique, genus_unique)
 
-p_sankey_2 <-
-  ggplot(sankey_simplified, aes(x = x, 
-                              next_x = next_x, 
-                              node = node, 
-                              next_node = next_node,
-                              fill = factor(node))) +
+p_sankey_2 <- ggplot(sankey_simplified, aes(
+  x = x, 
+  next_x = next_x, 
+  node = node, 
+  next_node = next_node,
+  fill = factor(node)
+)) +
   geom_sankey(flow.alpha = 0.6, node.color = "gray30", smooth = 8) +
-  geom_sankey_label(size = 3.5, color = "white", fill = "gray40", aes(label = node)) +
+  geom_sankey_label(
+    # Remove the phylum prefix for cleaner labels
+    aes(label = str_remove(node, "^[^_]+_")),
+    size = 3.5, 
+    color = "white", 
+    fill = "gray40"
+  ) +
   scale_fill_viridis_d(option = "plasma", drop = FALSE) +
   theme_sankey(base_size = 16) +
   theme(legend.position = "none") +
-  labs(x = "Taxonomic Level",
-       y = "Number of MAGs",
-       title = "Simplified Taxonomic Flow: Phylum → Family → Genus") +
+  labs(
+    x = "Taxonomic Level",
+    y = "Number of MAGs",
+    title = "Simplified Taxonomic Flow: Phylum → Family → Genus"
+  ) +
   scale_x_discrete(labels = c("Phylum", "Family", "Genus"))
 
-# Option 3: Include sample information
-sankey_with_sample <- bin_taxa_sankey %>%
-  select(sample, phylum, family, genus) %>%
-  make_long(sample, phylum, family, genus)
+p_sankey_2
 
-# For this plot, you might want to filter to top samples if you have 98
-top_samples <- bin_taxa_sankey %>%
-  count(sample, sort = TRUE) %>%
-  head(10) %>%
-  pull(sample)
+# ============================================================
+# For the version with samples:
+# ============================================================
 
 sankey_sample_all <- bin_taxa_sankey %>%
-  select(sample, phylum, family, genus) %>%
-  make_long(sample, phylum, family, genus)
+  select(sample, phylum, family_unique, genus_unique) %>%
+  make_long(sample, phylum, family_unique, genus_unique)
 
-sankey_sample_filtered <- bin_taxa_sankey %>%
-  filter(sample %in% top_samples) %>%
-  select(sample, phylum, family, genus) %>%
-  make_long(sample, phylum, family, genus)
-
-
-
-p_sankey_3 <-
-  ggplot(sankey_sample_all, aes(
-    x = x,
-    next_x = next_x,
-    node = node,
-    next_node = next_node,
-    fill = factor(node)
-  )) +
+p_sankey_3 <- ggplot(sankey_sample_all, aes(
+  x = x,
+  next_x = next_x,
+  node = node,
+  next_node = next_node,
+  fill = factor(node)
+)) +
   geom_sankey(flow.alpha = 0.5, node.color = "gray30", smooth = 8) +
-  
-  # Only label nodes that are NOT from the "Sample" column
   geom_sankey_label(
-    data = function(d) d %>% dplyr::filter(x != "sample"),
-    aes(label = node),
+    data = function(d) {
+      d %>% 
+        dplyr::filter(x != "sample") %>%
+        mutate(
+          # Only remove prefix for family and genus, NOT for phylum
+          clean_label = if_else(
+            x %in% c("family_unique", "genus_unique"),
+            str_remove(node, "^[^_]+_"),
+            node
+          )
+        )
+    },
+    aes(label = clean_label),
     size = 4,
     color = "white",
     fill = "gray40"
   ) +
-  
   scale_fill_viridis_d(option = "viridis", drop = FALSE) +
   theme_sankey(base_size = 18) +
   theme(
@@ -734,11 +728,14 @@ p_sankey_3 <-
 
 p_sankey_3
 
-
-  
-
+# Save
 plot_dir <- "C:/Users/Anahid/Desktop/Project-Howler (2)/Project-Howler (2) (2)/Project-Howler/plots"
-
-ggsave(file.path(plot_dir, "MAGs_sankey.jpg"),plot = p_sankey_3, width = 22, height = 18, dpi = 300)
+ggsave(
+  file.path(plot_dir, "MAGs_sankey_order.jpg"),
+  plot = p_sankey_3,
+  width = 22,
+  height = 18,
+  dpi = 300
+)
 ```
 
